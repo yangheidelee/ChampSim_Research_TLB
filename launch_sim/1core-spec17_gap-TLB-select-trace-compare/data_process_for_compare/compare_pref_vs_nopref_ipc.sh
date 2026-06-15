@@ -43,6 +43,8 @@ OUT_DIR="${CHAMPSIM_ROOT}/csv_figure/${COMPARE_TAG}/${FLOW_TAG}/data_process_for
 OUT_CSV="${OUT_DIR}/pref_vs_nopref_ipc_compare.csv"
 OUT_PNG="${OUT_DIR}/pref_vs_nopref_ipc_compare.png"
 OUT_PDF="${OUT_DIR}/pref_vs_nopref_ipc_compare.pdf"
+OUT_MPKI_PNG="${OUT_DIR}/pref_vs_nopref_stlb_mpki_norm.png"
+OUT_MPKI_PDF="${OUT_DIR}/pref_vs_nopref_stlb_mpki_norm.pdf"
 OUT_STLB_PNG="${OUT_DIR}/pref_vs_nopref_stlb_miss_rate_norm.png"
 OUT_STLB_PDF="${OUT_DIR}/pref_vs_nopref_stlb_miss_rate_norm.pdf"
 TOOL_PY="${SCRIPT_DIR}/tlb_select_tools.py"
@@ -56,6 +58,9 @@ python3 "$TOOL_PY" compare \
     --fig-png "$OUT_PNG" \
     --fig-pdf "$OUT_PDF" \
     --figure-title "pref vs nopref IPC compare" \
+    --mpki-fig-png "$OUT_MPKI_PNG" \
+    --mpki-fig-pdf "$OUT_MPKI_PDF" \
+    --mpki-figure-title "pref vs nopref STLB MPKI amean" \
     --stlb-fig-png "$OUT_STLB_PNG" \
     --stlb-fig-pdf "$OUT_STLB_PDF" \
     --stlb-figure-title "pref vs nopref STLB miss rate amean"

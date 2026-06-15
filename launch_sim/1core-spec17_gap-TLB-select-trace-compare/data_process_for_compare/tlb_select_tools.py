@@ -71,6 +71,10 @@ COMPARE_FIELDS = [
     "pref_ipc",
     "ipc_speedup",
     "ipc_speedup_pct",
+    "nopref_stlb_mpki",
+    "pref_stlb_mpki",
+    "stlb_mpki_norm",
+    "stlb_mpki_change_pct",
     "nopref_stlb_miss_rate",
     "pref_stlb_miss_rate",
     "stlb_miss_rate_norm",
@@ -344,6 +348,9 @@ def compare_configs(args: argparse.Namespace) -> None:
         n_ipc = to_float(n.get("ipc"))
         p_ipc = to_float(p.get("ipc"))
         speedup = safe_div(p_ipc, n_ipc)
+        n_stlb_mpki = to_float(n.get("stlb_mpki"))
+        p_stlb_mpki = to_float(p.get("stlb_mpki"))
+        stlb_mpki_norm = safe_div(p_stlb_mpki, n_stlb_mpki)
         n_stlb_miss_rate = to_float(n.get("stlb_miss_rate"))
         p_stlb_miss_rate = to_float(p.get("stlb_miss_rate"))
         stlb_miss_rate_norm = safe_div(p_stlb_miss_rate, n_stlb_miss_rate)
@@ -354,6 +361,10 @@ def compare_configs(args: argparse.Namespace) -> None:
             "pref_ipc": p_ipc,
             "ipc_speedup": speedup,
             "ipc_speedup_pct": (speedup - 1.0) * 100.0 if finite(speedup) else math.nan,
+            "nopref_stlb_mpki": n_stlb_mpki,
+            "pref_stlb_mpki": p_stlb_mpki,
+            "stlb_mpki_norm": stlb_mpki_norm,
+            "stlb_mpki_change_pct": (stlb_mpki_norm - 1.0) * 100.0 if finite(stlb_mpki_norm) else math.nan,
             "nopref_stlb_miss_rate": n_stlb_miss_rate,
             "pref_stlb_miss_rate": p_stlb_miss_rate,
             "stlb_miss_rate_norm": stlb_miss_rate_norm,
@@ -362,6 +373,8 @@ def compare_configs(args: argparse.Namespace) -> None:
     write_csv(pathlib.Path(args.out_csv), COMPARE_FIELDS, rows)
     if args.fig_png:
         plot_compare(rows, pathlib.Path(args.fig_png), pathlib.Path(args.fig_pdf), args.figure_title)
+    if args.mpki_fig_png:
+        plot_stlb_mpki_compare(rows, pathlib.Path(args.mpki_fig_png), pathlib.Path(args.mpki_fig_pdf), args.mpki_figure_title)
     if args.stlb_fig_png:
         plot_stlb_miss_rate_compare(rows, pathlib.Path(args.stlb_fig_png), pathlib.Path(args.stlb_fig_pdf), args.stlb_figure_title)
     log_info(f"compare csv: {args.out_csv}")
@@ -419,30 +432,35 @@ def plot_single(rows: List[Dict[str, object]], fig_png: pathlib.Path, fig_pdf: p
     rows = sorted(rows, key=workload_sort_key)
     labels = [plot_label(r, "amean") for r in rows]
     x = list(range(len(rows)))
-    fig, axes = plt.subplots(2, 1, figsize=(max(12, len(rows) * 0.52), 9.8), dpi=220, gridspec_kw={"height_ratios": [1, 1.35], "hspace": 0.62})
+    fig, axes = plt.subplots(3, 1, figsize=(max(12, len(rows) * 0.52), 12.4), dpi=220, gridspec_kw={"height_ratios": [1, 1, 1.35], "hspace": 0.72})
 
-    axes[0].bar(x, [float(r["stlb_miss_rate"]) for r in rows], color="#1f77b4", width=0.68)
-    axes[0].set_title("STLB total miss rate", pad=8)
-    axes[0].set_ylabel("Miss rate")
+    axes[0].bar(x, [float(r["stlb_mpki"]) for r in rows], color="#4c78a8", width=0.68)
+    axes[0].set_title("STLB total MPKI", pad=8)
+    axes[0].set_ylabel("MPKI")
     style_axis(axes[0])
+
+    axes[1].bar(x, [float(r["stlb_miss_rate"]) for r in rows], color="#1f77b4", width=0.68)
+    axes[1].set_title("STLB total miss rate", pad=8)
+    axes[1].set_ylabel("Miss rate")
+    style_axis(axes[1])
 
     bottom = [0.0] * len(rows)
     for key, label, _, _, color in CAUSES:
         vals = [100.0 * float(r[f"{key}_share"]) for r in rows]
-        axes[1].bar(x, vals, bottom=bottom, label=label, color=color, width=0.68)
+        axes[2].bar(x, vals, bottom=bottom, label=label, color=color, width=0.68)
         bottom = [b + v for b, v in zip(bottom, vals)]
-    axes[1].set_title("STLB miss-cause share", pad=8)
-    axes[1].set_ylabel("Share of STLB misses (%)")
-    axes[1].set_ylim(0, 100)
-    style_axis(axes[1])
+    axes[2].set_title("STLB miss-cause share", pad=8)
+    axes[2].set_ylabel("Share of STLB misses (%)")
+    axes[2].set_ylim(0, 100)
+    style_axis(axes[2])
 
     for ax in axes:
         ax.set_xticks(x)
         ax.set_xticklabels(labels, rotation=45, ha="right")
-    axes[1].set_xlabel("Benchmark")
-    axes[1].legend(loc="lower left", ncols=1, frameon=True, edgecolor="#b0b0b0")
+    axes[2].set_xlabel("Benchmark")
+    axes[2].legend(loc="lower left", ncols=1, frameon=True, edgecolor="#b0b0b0")
     fig.suptitle(title, fontsize=15)
-    fig.subplots_adjust(left=0.07, right=0.99, bottom=0.13, top=0.91, hspace=0.64)
+    fig.subplots_adjust(left=0.07, right=0.99, bottom=0.11, top=0.93, hspace=0.72)
     fig_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(fig_png, bbox_inches="tight")
     if fig_pdf:
@@ -468,6 +486,36 @@ def plot_compare(rows: List[Dict[str, object]], fig_png: pathlib.Path, fig_pdf: 
     ax.axhline(1.0, color="black", linewidth=0.9)
     ax.set_title(title)
     ax.set_ylabel("IPC speedup (pref / nopref)")
+    ax.set_xlabel("Benchmark")
+    style_axis(ax)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    fig.tight_layout()
+    fig_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(fig_png, bbox_inches="tight")
+    if fig_pdf:
+        fig.savefig(fig_pdf, bbox_inches="tight")
+
+
+def plot_stlb_mpki_compare(rows: List[Dict[str, object]], fig_png: pathlib.Path, fig_pdf: pathlib.Path, title: str) -> None:
+    try:
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+        import matplotlib.pyplot as plt
+    except Exception as exc:
+        log_warn(f"matplotlib unavailable, skip plotting: {exc}")
+        return
+    apply_plot_style(plt)
+    rows = sorted(rows, key=workload_sort_key)
+    labels = [plot_label(r, "amean") for r in rows]
+    x = list(range(len(rows)))
+    vals = [float(r["stlb_mpki_norm"]) for r in rows]
+    colors = ["#2ca02c" if v <= 1.0 else "#d62728" for v in vals]
+    fig, ax = plt.subplots(figsize=(max(12, len(rows) * 0.5), 5.2), dpi=220)
+    ax.bar(x, vals, color=colors, width=0.68)
+    ax.axhline(1.0, color="black", linewidth=0.9)
+    ax.set_title(title)
+    ax.set_ylabel("Normalized STLB MPKI (amean, pref / nopref)")
     ax.set_xlabel("Benchmark")
     style_axis(ax)
     ax.set_xticks(x)
@@ -536,6 +584,9 @@ def main() -> None:
     p_cmp.add_argument("--fig-png", default="")
     p_cmp.add_argument("--fig-pdf", default="")
     p_cmp.add_argument("--figure-title", default="IPC compare")
+    p_cmp.add_argument("--mpki-fig-png", default="")
+    p_cmp.add_argument("--mpki-fig-pdf", default="")
+    p_cmp.add_argument("--mpki-figure-title", default="STLB MPKI amean compare")
     p_cmp.add_argument("--stlb-fig-png", default="")
     p_cmp.add_argument("--stlb-fig-pdf", default="")
     p_cmp.add_argument("--stlb-figure-title", default="STLB miss rate amean compare")

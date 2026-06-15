@@ -365,9 +365,9 @@ pref_summary_stlb_miss_rate   = sum(pref selected trace stlb_miss_i) / sum(pref 
 summary_stlb_miss_rate_norm = pref_summary_stlb_miss_rate / nopref_summary_stlb_miss_rate
 ```
 
-### 7.3 如果后续加入 MPKI norm
+### 7.3 STLB MPKI norm
 
-MPKI norm 应该使用同样方法：
+当前脚本也输出 STLB MPKI 的归一化对比。计算方法和 miss rate norm 一致：
 
 先分别在每个配置内部计算 workload 或 summary MPKI：
 
@@ -380,6 +380,19 @@ pref_mpki   = sum(pref_miss_i) * 1000 / sum(pref_instructions_i)
 
 ```text
 mpki_norm = pref_mpki / nopref_mpki
+```
+
+当前 CSV 字段名是：
+
+```text
+stlb_mpki_norm = pref_stlb_mpki / nopref_stlb_mpki
+stlb_mpki_change_pct = (stlb_mpki_norm - 1) * 100
+```
+
+图文件名为：
+
+```text
+pref_vs_nopref_stlb_mpki_norm.png
 ```
 
 ## 8. STLB miss cause share 的聚合方法
@@ -484,6 +497,10 @@ nopref_ipc
 pref_ipc
 ipc_speedup
 ipc_speedup_pct
+nopref_stlb_mpki
+pref_stlb_mpki
+stlb_mpki_norm
+stlb_mpki_change_pct
 nopref_stlb_miss_rate
 pref_stlb_miss_rate
 stlb_miss_rate_norm
@@ -496,6 +513,7 @@ stlb_miss_rate_change_pct
 select_trace/nopref-workload-sweep/nopref_stlb_miss_causes.png
 select_trace/pref-workload-sweep/pref_stlb_miss_causes.png
 select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.png
+select_trace/data_process_for_compare/pref_vs_nopref_stlb_mpki_norm.png
 select_trace/data_process_for_compare/pref_vs_nopref_stlb_miss_rate_norm.png
 ```
 
@@ -510,6 +528,7 @@ full_trace/pref-workload-sweep/pref_workload_agg.csv
 full_trace/pref-workload-sweep/pref_stlb_miss_causes.png
 full_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.csv
 full_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.png
+full_trace/data_process_for_compare/pref_vs_nopref_stlb_mpki_norm.png
 full_trace/data_process_for_compare/pref_vs_nopref_stlb_miss_rate_norm.png
 ```
 
