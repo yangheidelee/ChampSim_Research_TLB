@@ -285,7 +285,7 @@ struct std::common_type<champsim::data::size<Rep1, Unit1>, champsim::data::size<
 
 template <>
 struct fmt::formatter<champsim::data::bits> : fmt::formatter<std::underlying_type_t<champsim::data::bits>> {
-  auto format(const champsim::data::bits& val, format_context& ctx) const -> format_context::iterator
+  auto format(const champsim::data::bits& val, format_context& ctx) -> format_context::iterator
   {
     return fmt::formatter<std::underlying_type_t<champsim::data::bits>>::format(champsim::to_underlying(val), ctx);
   }

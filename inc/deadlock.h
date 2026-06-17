@@ -35,7 +35,7 @@ struct fmtstr_type_finder {
 
 template <typename... Args>
 struct fmtstr_type_finder<std::tuple<Args...>> {
-  using type = fmt::format_string<Args...>;
+  using type = fmt::string_view;
 };
 
 template <typename R, typename F>

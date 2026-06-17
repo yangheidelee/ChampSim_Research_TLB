@@ -28,14 +28,16 @@
 #include "chrono.h"
 #include "deadlock.h"
 #include "instruction.h"
+#include "stlb_ideal.h"
 #include "util/algorithm.h"
 #include "util/bits.h"
 #include "util/span.h"
+#include "vmem.h"
 
 CACHE::CACHE(CACHE&& other)
     : operable(other),
 
-      upper_levels(std::move(other.upper_levels)), lower_level(std::move(other.lower_level)), lower_translate(std::move(other.lower_translate)),
+      upper_levels(std::move(other.upper_levels)), lower_level(std::move(other.lower_level)), lower_translate(std::move(other.lower_translate)), vmem(other.vmem),
 
       cpu(other.cpu), NAME(std::move(other.NAME)), NUM_SET(other.NUM_SET), NUM_WAY(other.NUM_WAY), MSHR_SIZE(other.MSHR_SIZE), PQ_SIZE(other.PQ_SIZE),
       HIT_LATENCY(other.HIT_LATENCY), FILL_LATENCY(other.FILL_LATENCY), OFFSET_BITS(other.OFFSET_BITS), block(std::move(other.block)), MAX_TAG(other.MAX_TAG),
@@ -59,6 +61,7 @@ auto CACHE::operator=(CACHE&& other) -> CACHE&
   this->upper_levels = std::move(other.upper_levels);
   this->lower_level = std::move(other.lower_level);
   this->lower_translate = std::move(other.lower_translate);
+  this->vmem = other.vmem;
 
   this->cpu = other.cpu;
   this->NAME = std::move(other.NAME);
@@ -281,10 +284,13 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
     metadata_thru = impl_prefetcher_cache_operate(module_address(handle_pkt), handle_pkt.ip, hit, useful_prefetch, handle_pkt.type, metadata_thru);
   }
 
+  const auto ideal_hit = !hit && is_stlb() && vmem != nullptr && stlb_ideal_resolves(champsim_stlb_ideal_mode, handle_pkt.translation_source);
+
   // update replacement policy
   const auto way_idx = std::distance(set_begin, way);
-  impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, {}, handle_pkt.type,
-                                hit);
+  if (!ideal_hit) {
+    impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, {}, handle_pkt.type, hit);
+  }
 
   if (hit) {
     sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
@@ -304,7 +310,33 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
     }
   }
 
-  return hit;
+  return hit || (ideal_hit && try_stlb_ideal_hit(handle_pkt));
+}
+
+bool CACHE::try_stlb_ideal_hit(const tag_lookup_type& handle_pkt)
+{
+  if (!is_stlb() || vmem == nullptr || !stlb_ideal_resolves(champsim_stlb_ideal_mode, handle_pkt.translation_source)) {
+    return false;
+  }
+
+  auto [ppage, penalty] = vmem->va_to_pa(handle_pkt.cpu, champsim::page_number{handle_pkt.v_address});
+  (void)penalty;
+
+  if constexpr (champsim::debug_print) {
+    fmt::print("[{}] {} ideal STLB hit instr_id: {} v_address: {} ppage: {} origin: {} mode: {} cycle: {}\n", NAME, __func__, handle_pkt.instr_id,
+               handle_pkt.v_address, ppage, translation_origin_names.at(champsim::to_underlying(handle_pkt.translation_source)),
+               stlb_ideal_mode_name(champsim_stlb_ideal_mode), current_time.time_since_epoch() / clock_period);
+  }
+
+  sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+  record_stlb_origin_hit(handle_pkt);
+
+  response_type response{handle_pkt.address, handle_pkt.v_address, champsim::address{ppage}, handle_pkt.pf_metadata, handle_pkt.instr_depend_on_me};
+  for (auto* ret : handle_pkt.to_return) {
+    ret->push_back(response);
+  }
+
+  return true;
 }
 
 auto CACHE::mshr_and_forward_packet(const tag_lookup_type& handle_pkt) -> std::pair<mshr_type, request_type>

@@ -141,6 +141,7 @@ def get_cache_builder(elem, ul_pairs):
     required_parts = [
         '.name("{name}")',
         '.upper_levels({{{^upper_levels_string}}})',
+        '.virtual_memory(&vmem)',
     ]
 
     local_cache_builder_parts = {

@@ -1,0 +1,204 @@
+# 1core SPEC17 + GAP ideal STLB IPC upper bound
+
+工作目录：
+
+cd /home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound
+
+本脚本文件夹只处理当前实验：
+
+launch_sim/1core-spec17_gap-idealTLB-select-trace-compare
+
+实验目标：
+
+1. baseline 使用 pref-workload-sweep。
+   - 这是原始带 cache prefetcher 的配置。
+   - 不开启 ideal STLB。
+
+2. 构建并运行三种 ideal STLB 上限设计：
+   - ideal-demand-workload-sweep：STLB 把 Demand Data 和 Demand Instruction 引发的 STLB miss 都当作真正 STLB hit 解决。
+   - ideal-l1pref-workload-sweep：STLB 把 L1I Prefetch 和 L1D Prefetch 引发的 STLB miss 都当作真正 STLB hit 解决。
+   - ideal-all-workload-sweep：STLB 把所有来源的 STLB miss 都当作真正 STLB hit 解决。
+
+3. ideal hit 的含义：
+   - 仍然走 STLB lookup。
+   - 如果真实 tag lookup miss 且 miss 来源属于当前 ideal mode，则直接返回翻译结果。
+   - 不进入 STLB miss 统计。
+   - 不分配 STLB MSHR。
+   - 不向 PTW/lower_translate 发送请求。
+   - 不引入 page walk 延迟。
+   - 在 STLB 统计中按 hit 计数。
+
+4. 遍历两个 trace 目录：
+   - /data0/tzh/champsim_traces/SPEC17
+   - /data0/tzh/champsim_traces/GAP
+
+5. select_trace 流程：
+   - 先用 baseline pref-workload-sweep 的结果筛选 trace。
+   - 筛选指标：Core_0_STLB_total_MPKI。
+   - 默认条件：Core_0_STLB_total_MPKI > 1.0。
+   - 后续 baseline 和三种 ideal 配置都只对筛选出的相同 trace 集合做后处理。
+
+6. full_trace 流程：
+   - 不做 STLB MPKI 筛选。
+   - 直接使用 result 目录下所有可解析的 trace log。
+   - 聚合公式和 select_trace 一致。
+
+统计和聚合规则：
+
+1. SPEC17：
+   - 同一个 benchmark 下的多个 trace 作为同一个 workload。
+   - workload 内部 trace 等权聚合。
+
+2. GAP：
+   - 每个 trace 作为单独 workload。
+
+3. IPC：
+   - trace-level IPC 直接来自 result。
+   - workload-level IPC 使用同一 workload 内 trace IPC 的 gmean。
+   - dataset summary IPC 使用筛选后所有 trace-level IPC 的 gmean。
+
+4. IPC speedup：
+   - trace-level speedup = ideal_trace_ipc / baseline_trace_ipc。
+   - workload-level speedup = ideal_workload_ipc / baseline_workload_ipc。
+   - dataset summary speedup = 所有 trace-level speedup 的 gmean。
+
+主要输出目录：
+
+results/1core-spec17_gap-idealTLB-select-trace-compare/pref-workload-sweep
+results/1core-spec17_gap-idealTLB-select-trace-compare/ideal-demand-workload-sweep
+results/1core-spec17_gap-idealTLB-select-trace-compare/ideal-l1pref-workload-sweep
+results/1core-spec17_gap-idealTLB-select-trace-compare/ideal-all-workload-sweep
+
+csv_figure/1core-spec17_gap-idealTLB-select-trace-compare/select_trace
+csv_figure/1core-spec17_gap-idealTLB-select-trace-compare/full_trace
+
+生成的 bin：
+
+bin/tlb-pref-1core
+bin/tlb-ideal-demand-1core
+bin/tlb-ideal-l1pref-1core
+bin/tlb-ideal-all-1core
+
+
+============================================================
+常用命令
+============================================================
+
+查看当前配置和输出路径：
+
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh status
+
+
+完整流程，构建四个 bin，跑 baseline 和三种 ideal 配置，并生成 select_trace 后处理：
+
+MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh all 15
+
+
+只构建四个 bin：
+
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh build-only
+
+
+只运行四种配置，不做后处理：
+
+MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh run-only 15
+
+
+只跑某一种配置：
+
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh run-baseline 15
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh run-demand 15
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh run-l1pref 15
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh run-allideal 15
+
+
+小范围 smoke test：
+
+TRACE_FILTER=649.fotonik3d_s N_WARM=2 N_SIM=5 MAX_PARALLEL=1 SKIP_EXISTING=0 \
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh run-only 1
+
+
+只根据 baseline result 生成筛选 trace 的 JSON：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh select-json
+
+
+只做 select_trace 后处理和画图：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh backend
+
+
+只做 full_trace 后处理和画图：
+
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh full-backend
+
+
+同时生成 select_trace 和 full_trace 后处理结果：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh backend-all
+
+
+清理当前实验的 csv_figure 输出：
+
+./launch_sim/1core-spec17_gap-idealTLB-select-trace-compare/run_tlb_select_compare.sh clean-csv
+
+
+============================================================
+常用环境变量
+============================================================
+
+MAX_PARALLEL：
+并行仿真数量，默认 4。
+
+N_WARM：
+warmup 指令数，单位是 million，默认 50。
+
+N_SIM：
+ROI 指令数，单位是 million，默认 200。
+
+SKIP_EXISTING：
+如果 result log 已存在是否跳过，默认 1。
+
+TRACE_FILTER：
+只跑某一类 trace，例如：
+
+TRACE_FILTER=649.fotonik3d_s
+TRACE_FILTER=gap.pr
+
+TRACE_DIRS：
+trace 搜索目录，默认：
+
+/data0/tzh/champsim_traces/SPEC17:/data0/tzh/champsim_traces/GAP
+
+SELECT_THRESHOLD：
+筛选 trace 的 STLB MPKI 阈值，默认 1.0。
+
+
+============================================================
+关键输出文件
+============================================================
+
+筛选 trace JSON：
+
+csv_figure/1core-spec17_gap-idealTLB-select-trace-compare/select_trace/data_process_for_compare/stlb_mpki_gt_1.0_selected_traces.json
+
+
+ideal STLB IPC upper bound 对比 CSV：
+
+csv_figure/1core-spec17_gap-idealTLB-select-trace-compare/select_trace/data_process_for_compare/ideal_stlb_ipc_upperbound_compare.csv
+
+csv_figure/1core-spec17_gap-idealTLB-select-trace-compare/full_trace/data_process_for_compare/ideal_stlb_ipc_upperbound_compare.csv
+
+
+ideal STLB IPC upper bound 分组柱状图：
+
+csv_figure/1core-spec17_gap-idealTLB-select-trace-compare/select_trace/data_process_for_compare/ideal_stlb_ipc_upperbound_compare.png
+csv_figure/1core-spec17_gap-idealTLB-select-trace-compare/select_trace/data_process_for_compare/ideal_stlb_ipc_upperbound_compare.pdf
+
+csv_figure/1core-spec17_gap-idealTLB-select-trace-compare/full_trace/data_process_for_compare/ideal_stlb_ipc_upperbound_compare.png
+csv_figure/1core-spec17_gap-idealTLB-select-trace-compare/full_trace/data_process_for_compare/ideal_stlb_ipc_upperbound_compare.pdf

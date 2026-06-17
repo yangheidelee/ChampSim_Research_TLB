@@ -33,6 +33,7 @@
 #include "ooo_cpu.h" // for O3_CPU
 #include "phase_info.h"
 #include "stats_printer.h"
+#include "stlb_ideal.h"
 #include "tracereader.h"
 #include "vmem.h"
 
@@ -82,6 +83,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   long long warmup_instructions = 0;
   long long simulation_instructions = std::numeric_limits<long long>::max();
   std::string json_file_name;
+  std::string stlb_ideal_mode_text{"off"};
   std::vector<std::string> trace_names;
   bool hide_heartbeat{false};
   long long heartbeat_interval = 500000;
@@ -99,10 +101,15 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   auto* json_option =
       app.add_option("--json", json_file_name, "The name of the file to receive JSON output. If no name is specified, stdout will be used")->expected(0, 1);
+  app.add_option("--stlb-ideal-mode", stlb_ideal_mode_text,
+                 "Resolve selected STLB misses as ideal STLB hits. Choices: off, demand, l1pref, all")
+      ->check(CLI::IsMember({"off", "none", "0", "demand", "demand-only", "l1pref", "l1-prefetch", "prefetch", "pref", "all", "ideal"}));
 
   app.add_option("traces", trace_names, "The paths to the traces")->required()->expected(NUM_CPUS)->check(CLI::ExistingFile);
 
   CLI11_PARSE(app, argc, argv);
+
+  champsim_stlb_ideal_mode = parse_stlb_ideal_mode(stlb_ideal_mode_text);
 
   g_env = &gen_environment;
 
@@ -143,6 +150,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   fmt::print("\n*** ChampSim Multicore Out-of-Order Simulator ***\nWarmup Instructions: {}\nSimulation Instructions: {}\nNumber of CPUs: {}\nPage size: {}\n",
              phases.at(0).length, phases.at(1).length, std::size(gen_environment.cpu_view()), PAGE_SIZE);
+  fmt::print("STLB ideal mode: {}\n", stlb_ideal_mode_name(champsim_stlb_ideal_mode));
 
   for (size_t index = 0; index < NUM_CPUS; ++index) {
     fmt::print("Core {}: {}\n", index, trace_names[index]);

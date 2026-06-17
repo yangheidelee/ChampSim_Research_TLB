@@ -15,7 +15,9 @@ override PREFETCH_ROOT += $(addsuffix /prefetcher,$(MODULE_ROOT))
 override REPLACEMENT_ROOT += $(addsuffix /replacement,$(MODULE_ROOT))
 
 # vcpkg integration
-TRIPLET_DIR = $(patsubst %/,%,$(firstword $(filter-out $(ROOT_DIR)/vcpkg_installed/vcpkg/, $(wildcard $(ROOT_DIR)/vcpkg_installed/*/))))
+LOCAL_TRIPLET_DIR = $(patsubst %/,%,$(firstword $(filter-out $(ROOT_DIR)/vcpkg_installed/vcpkg/, $(wildcard $(ROOT_DIR)/vcpkg_installed/*/))))
+FALLBACK_TRIPLET_DIR = $(patsubst %/,%,$(firstword $(filter-out /home/zcq/git_prj/ChampSim/vcpkg_installed/vcpkg/, $(wildcard /home/zcq/git_prj/ChampSim/vcpkg_installed/*/))))
+TRIPLET_DIR = $(firstword $(LOCAL_TRIPLET_DIR) $(FALLBACK_TRIPLET_DIR))
 override CPPFLAGS += -I$(OBJ_ROOT)
 override LDFLAGS  += -L$(TRIPLET_DIR)/lib -L$(TRIPLET_DIR)/lib/manual-link
 override LDLIBS   += -lCLI11 -llzma -lz -lbz2 -lfmt
@@ -115,7 +117,7 @@ configclean: clean compile_commands_clean
 reverse = $(if $(wordlist 2,2,$(1)),$(call reverse,$(call tail,$1)) $(firstword $(1)),$(1))
 
 absolute.options:
-	@echo "-I$(realpath inc) -isystem $(realpath $(TRIPLET_DIR)/include)" > $@
+	@echo "-I$(realpath inc) $(if $(wildcard $(TRIPLET_DIR)/include),-isystem $(realpath $(TRIPLET_DIR)/include),)" > $@
 
 attach_options = $(call reverse, $(addprefix @,$(filter %.options, $^)))
 
@@ -332,7 +334,7 @@ pytest:
 	PYTHONPATH=$(PYTHONPATH):$(ROOT_DIR) python3 -m unittest discover -v --start-directory='test/python'
 
 ifeq (,$(filter clean compile_commands compile_commands_clean configclean pytest maketest, $(MAKECMDGOALS)))
--include $(patsubst $(OBJ_ROOT)/%.o,$(DEP_ROOT)/%.d,$(foreach build_id,TEST $(build_ids),$(call get_base_objs,$(build_id))) $(test_base_objs) $(base_module_objs))
+-include $(patsubst $(OBJ_ROOT)/%.o,$(DEP_ROOT)/%.d,$(foreach build_id,$(build_ids),$(call get_base_objs,$(build_id))) $(base_module_objs))
 endif
 
 ifeq (maketest,$(findstring maketest,$(MAKECMDGOALS)))

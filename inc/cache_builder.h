@@ -30,6 +30,7 @@
 #include "util/to_underlying.h"
 
 class CACHE;
+class VirtualMemory;
 namespace champsim
 {
 class channel;
@@ -62,6 +63,7 @@ struct cache_builder_base {
   std::vector<champsim::channel*> m_uls{};
   champsim::channel* m_ll{};
   champsim::channel* m_lt{nullptr};
+  VirtualMemory* m_vmem{nullptr};
 };
 } // namespace detail
 
@@ -232,6 +234,11 @@ public:
    * Specify the translator (TLB) for this cache.
    */
   self_type& lower_translate(champsim::channel* lt_);
+
+  /**
+   * Specify the virtual memory object for ideal translation experiments.
+   */
+  self_type& virtual_memory(VirtualMemory* vmem_);
 
   /**
    * Specify the cache prefetcher.
@@ -511,6 +518,13 @@ template <typename P, typename R>
 auto champsim::cache_builder<P, R>::lower_translate(champsim::channel* lt_) -> self_type&
 {
   m_lt = lt_;
+  return *this;
+}
+
+template <typename P, typename R>
+auto champsim::cache_builder<P, R>::virtual_memory(VirtualMemory* vmem_) -> self_type&
+{
+  m_vmem = vmem_;
   return *this;
 }
 
