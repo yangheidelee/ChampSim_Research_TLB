@@ -73,6 +73,10 @@ COMPARE_FIELDS = [
     "pref_ipc",
     "ipc_speedup",
     "ipc_speedup_pct",
+    "nopref_stlb_mpki",
+    "pref_stlb_mpki",
+    "stlb_mpki_norm",
+    "stlb_mpki_change_pct",
     "nopref_stlb_miss_rate",
     "pref_stlb_miss_rate",
     "stlb_miss_rate_norm",
@@ -357,6 +361,9 @@ def compare_configs(args: argparse.Namespace) -> None:
         n_ipc = to_float(n.get("ipc"))
         p_ipc = to_float(p.get("ipc"))
         speedup = safe_div(p_ipc, n_ipc)
+        n_stlb_mpki = to_float(n.get("stlb_mpki"))
+        p_stlb_mpki = to_float(p.get("stlb_mpki"))
+        stlb_mpki_norm = safe_div(p_stlb_mpki, n_stlb_mpki)
         n_stlb_miss_rate = to_float(n.get("stlb_miss_rate"))
         p_stlb_miss_rate = to_float(p.get("stlb_miss_rate"))
         stlb_miss_rate_norm = safe_div(p_stlb_miss_rate, n_stlb_miss_rate)
@@ -367,6 +374,10 @@ def compare_configs(args: argparse.Namespace) -> None:
             "pref_ipc": p_ipc,
             "ipc_speedup": speedup,
             "ipc_speedup_pct": (speedup - 1.0) * 100.0 if finite(speedup) else math.nan,
+            "nopref_stlb_mpki": n_stlb_mpki,
+            "pref_stlb_mpki": p_stlb_mpki,
+            "stlb_mpki_norm": stlb_mpki_norm,
+            "stlb_mpki_change_pct": (stlb_mpki_norm - 1.0) * 100.0 if finite(stlb_mpki_norm) else math.nan,
             "nopref_stlb_miss_rate": n_stlb_miss_rate,
             "pref_stlb_miss_rate": p_stlb_miss_rate,
             "stlb_miss_rate_norm": stlb_miss_rate_norm,
@@ -375,6 +386,8 @@ def compare_configs(args: argparse.Namespace) -> None:
     write_csv(pathlib.Path(args.out_csv), COMPARE_FIELDS, rows)
     if args.fig_png:
         plot_compare(rows, pathlib.Path(args.fig_png), pathlib.Path(args.fig_pdf), args.figure_title)
+    if args.mpki_fig_png:
+        plot_stlb_mpki_compare(rows, pathlib.Path(args.mpki_fig_png), pathlib.Path(args.mpki_fig_pdf), args.mpki_figure_title)
     if args.stlb_fig_png:
         plot_stlb_miss_rate_compare(rows, pathlib.Path(args.stlb_fig_png), pathlib.Path(args.stlb_fig_pdf), args.stlb_figure_title)
     log_info(f"compare csv: {args.out_csv}")
@@ -490,6 +503,36 @@ def plot_compare(rows: List[Dict[str, object]], fig_png: pathlib.Path, fig_pdf: 
         fig.savefig(fig_pdf, bbox_inches="tight")
 
 
+def plot_stlb_mpki_compare(rows: List[Dict[str, object]], fig_png: pathlib.Path, fig_pdf: pathlib.Path, title: str) -> None:
+    try:
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+        import matplotlib.pyplot as plt
+    except Exception as exc:
+        log_warn(f"matplotlib unavailable, skip plotting: {exc}")
+        return
+    apply_plot_style(plt)
+    rows = sorted(rows, key=workload_sort_key)
+    labels = [plot_label(r, "amean") for r in rows]
+    x = list(range(len(rows)))
+    vals = [float(r["stlb_mpki_norm"]) for r in rows]
+    colors = ["#2ca02c" if v <= 1.0 else "#d62728" for v in vals]
+    fig, ax = plt.subplots(figsize=(max(12, len(rows) * 0.5), 5.2), dpi=220)
+    ax.bar(x, vals, color=colors, width=0.68)
+    ax.axhline(1.0, color="black", linewidth=0.9)
+    ax.set_title(title)
+    ax.set_ylabel("Normalized STLB MPKI (amean, pref / nopref)")
+    ax.set_xlabel("Benchmark")
+    style_axis(ax)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    fig.tight_layout()
+    fig_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(fig_png, bbox_inches="tight")
+    if fig_pdf:
+        fig.savefig(fig_pdf, bbox_inches="tight")
+
+
 def plot_stlb_miss_rate_compare(rows: List[Dict[str, object]], fig_png: pathlib.Path, fig_pdf: pathlib.Path, title: str) -> None:
     try:
         import matplotlib
@@ -547,6 +590,9 @@ def main() -> None:
     p_cmp.add_argument("--fig-png", default="")
     p_cmp.add_argument("--fig-pdf", default="")
     p_cmp.add_argument("--figure-title", default="IPC compare")
+    p_cmp.add_argument("--mpki-fig-png", default="")
+    p_cmp.add_argument("--mpki-fig-pdf", default="")
+    p_cmp.add_argument("--mpki-figure-title", default="STLB MPKI amean compare")
     p_cmp.add_argument("--stlb-fig-png", default="")
     p_cmp.add_argument("--stlb-fig-pdf", default="")
     p_cmp.add_argument("--stlb-figure-title", default="STLB miss rate amean compare")

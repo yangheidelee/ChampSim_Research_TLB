@@ -1,0 +1,249 @@
+# 1core SPEC06 + SPEC17 + GAP + Ligra LLC-MPKI select compare
+
+工作目录：
+
+cd /home/zcq/git_prj/ChampSim
+
+本脚本文件夹只处理当前实验：
+
+launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare
+
+实验目标：
+
+1. 构建两个 ChampSim bin：
+   - nopref-workload-sweep：不开 cache prefetcher，用于 baseline 和 trace 筛选
+   - pref-workload-sweep：开启 prefetcher，用于和 nopref 做 IPC 对比
+
+2. 遍历四个 trace 目录：
+   - /data0/tzh/champsim_traces/SPEC06
+   - /data0/tzh/champsim_traces/SPEC17
+   - /data0/tzh/champsim_traces/GAP
+   - /data0/tzh/champsim_traces/Ligra
+
+3. 先跑 nopref，再跑 pref。
+
+4. 用 nopref 结果筛选 trace：
+   - 指标：Core_0_LLC_total_MPKI
+   - 条件：Core_0_LLC_total_MPKI > 1.0
+
+5. 默认对筛选出的 trace 做后处理：
+   - 每个配置各自输出 trace-level CSV
+   - 每个配置各自输出 workload-level CSV
+   - 每个配置各自画 STLB miss cause 百分比堆积柱状图
+   - 对 pref vs nopref 做 IPC 对比
+   - 对 pref vs nopref 做 STLB total miss rate 归一化对比
+   - 注意：这里的 trace 集合来自 nopref LLC MPKI > SELECT_THRESHOLD，后续 STLB 图表是在这个集合上统计
+
+6. 也支持 full_trace 后处理：
+   - 不做 LLC MPKI trace 筛选
+   - 直接使用 result 目录下所有可解析的 trace log
+   - 聚合公式和 select_trace 完全一致
+
+统计和聚合规则：
+
+1. SPEC06 / SPEC17 / Ligra：
+   - 同一个 benchmark 下的多个 trace 作为同一个 workload
+   - workload 内部 trace 等权聚合
+
+2. GAP：
+   - 每个 trace 作为单独 workload
+
+3. workload 内部：
+   - IPC 使用 gmean
+   - STLB MPKI 使用 sum(miss) * 1000 / sum(instructions)
+   - STLB miss rate 使用 sum(miss) / sum(access)
+   - LLC MPKI 使用 sum(miss) * 1000 / sum(instructions)
+   - LLC miss rate 使用 sum(miss) / sum(access)
+   - 各 miss-cause share 使用 sum(cause_miss) / sum(total_miss)
+
+4. 最终汇总：
+   - SPEC06 产生 gmean_spec06
+   - SPEC17 产生 gmean_spec17
+   - GAP 产生 gmean_gap
+   - Ligra 产生 gmean_ligra
+   - IPC summary 是 trace-level IPC 的 gmean
+   - MPKI、miss rate、miss cause share summary 是 sum/sum，不是 IPC 的 gmean
+
+主要输出目录：
+
+results/1core-spec0617_gapligra-TLB-selectLLC-compare/nopref-workload-sweep
+results/1core-spec0617_gapligra-TLB-selectLLC-compare/pref-workload-sweep
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/nopref-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/pref-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/data_process_for_compare
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/full_trace/nopref-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/full_trace/pref-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/full_trace/data_process_for_compare
+
+生成的 bin：
+
+bin/tlb-nopref-1core
+bin/tlb-pref-1core
+
+
+============================================================
+常用命令
+============================================================
+
+查看当前配置和输出路径：
+
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh status
+
+
+完整流程，遍历 SPEC06 + SPEC17 + GAP + Ligra：
+
+MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh all 15
+
+N_WARM=2 N_SIM=5 ./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh all 15
+
+
+小范围 smoke test，只跑 649.fotonik3d_s：
+
+TRACE_FILTER=649.fotonik3d_s N_WARM=2 N_SIM=5 MAX_PARALLEL=4 SKIP_EXISTING=0 \
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh all 4
+
+
+只构建两个 bin：
+
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh build-only
+
+
+只运行 workload，不做后处理：
+
+MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh run-only 15
+
+
+只跑 nopref：
+
+MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh run-nopref 15
+
+
+只跑 pref：
+
+MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh run-pref 15
+
+
+只根据 nopref result 生成筛选 trace 的 JSON：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh select-json
+
+
+只做后处理和画图：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh backend
+
+
+只做 full_trace 后处理和画图，不做 trace 筛选：
+
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh full-backend
+
+
+同时生成 select_trace 和 full_trace 后处理结果：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh backend-all
+
+
+只做 IPC 对比：
+
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh compare
+
+
+清理当前实验的 csv_figure 输出：
+
+./launch_sim/1core-spec0617_gapligra-TLB-selectLLC-compare/run_tlb_select_compare.sh clean-csv
+
+
+============================================================
+常用环境变量
+============================================================
+
+MAX_PARALLEL：
+并行仿真数量，默认 4。
+
+N_WARM：
+warmup 指令数，单位是 million，默认 50。
+
+N_SIM：
+ROI 指令数，单位是 million，默认 200。
+
+SKIP_EXISTING：
+如果 result log 已存在是否跳过，默认 1。
+
+TRACE_FILTER：
+只跑某一类 trace，例如：
+
+TRACE_FILTER=649.fotonik3d_s
+TRACE_FILTER=gap.pr
+
+TRACE_DIRS：
+trace 搜索目录，默认：
+
+/data0/tzh/champsim_traces/SPEC06:/data0/tzh/champsim_traces/SPEC17:/data0/tzh/champsim_traces/GAP:/data0/tzh/champsim_traces/Ligra
+
+SELECT_THRESHOLD：
+筛选 trace 的 LLC MPKI 阈值，默认 1.0。
+
+
+============================================================
+关键输出文件
+============================================================
+
+筛选 trace JSON：
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/data_process_for_compare/llc_mpki_gt_1.0_selected_traces.json
+
+
+nopref trace-level 数据：
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/nopref-workload-sweep/nopref_trace_level.csv
+
+nopref workload-level 数据：
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/nopref-workload-sweep/nopref_workload_agg.csv
+
+nopref STLB miss cause 图：
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/nopref-workload-sweep/nopref_stlb_miss_causes.png
+
+
+pref trace-level 数据：
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/pref-workload-sweep/pref_trace_level.csv
+
+pref workload-level 数据：
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/pref-workload-sweep/pref_workload_agg.csv
+
+pref STLB miss cause 图：
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/pref-workload-sweep/pref_stlb_miss_causes.png
+
+
+IPC 对比：
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.csv
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.png
+
+STLB total miss rate 归一化对比：
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/select_trace/data_process_for_compare/pref_vs_nopref_stlb_miss_rate_norm.png
+
+
+full_trace 结果：
+
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/full_trace/nopref-workload-sweep/nopref_trace_level.csv
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/full_trace/nopref-workload-sweep/nopref_workload_agg.csv
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/full_trace/pref-workload-sweep/pref_trace_level.csv
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/full_trace/pref-workload-sweep/pref_workload_agg.csv
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/full_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.csv
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/full_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.png
+csv_figure/1core-spec0617_gapligra-TLB-selectLLC-compare/full_trace/data_process_for_compare/pref_vs_nopref_stlb_miss_rate_norm.png

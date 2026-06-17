@@ -186,6 +186,7 @@ case "$cmd" in
         do_csv_nopref
         do_csv_pref
         do_compare
+        do_full_backend
         ;;
     build-only)
         check_env
