@@ -1,0 +1,170 @@
+# 1core SPEC06 + SPEC17 + GAP + Ligra ideal STLB select-trace flow, jsonnew
+
+工作目录：
+
+cd /home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound
+
+本脚本文件夹：
+
+launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew
+
+标准 JSON 配置：
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/champsim_config.json
+
+本实验中 nopref、pref、ideal-demand、ideal-l1pref、ideal-all 的 build 都从这个标准 JSON 复制一份到各自配置目录，然后只覆盖：
+
+- executable_name
+- num_cores
+- branch predictor / BTB
+- cache prefetcher
+- LLC replacement
+
+ideal STLB mode 不写入 JSON，而是在运行 bin 时通过命令行参数传递：
+
+- pref: 不带 --stlb-ideal-mode，等价于 off
+- ideal-demand: --stlb-ideal-mode demand
+- ideal-l1pref: --stlb-ideal-mode l1pref
+- ideal-all: --stlb-ideal-mode all
+
+
+============================================================
+处理流程
+============================================================
+
+1. build 五个 bin：
+
+- nopref-workload-sweep
+- pref-workload-sweep
+- ideal-demand-workload-sweep
+- ideal-l1pref-workload-sweep
+- ideal-all-workload-sweep
+
+2. 首先运行 nopref-workload-sweep。
+
+nopref 会遍历全部 SPEC06、SPEC17、GAP、Ligra trace，生成完整 result。
+
+3. 根据 nopref result 筛选 trace。
+
+筛选指标：
+
+Core_0_STLB_total_MPKI
+
+默认筛选条件：
+
+Core_0_STLB_total_MPKI > 1.0
+
+筛选结果写到：
+
+csv_figure/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/select_trace/data_process_for_compare/stlb_mpki_gt_1.0_selected_traces.json
+
+4. 后续只运行筛选出的 trace。
+
+以下配置都会读取上一步的 selected trace JSON，只跑筛选集合：
+
+- pref-workload-sweep
+- ideal-demand-workload-sweep
+- ideal-l1pref-workload-sweep
+- ideal-all-workload-sweep
+
+5. 只生成 select_trace 后处理结果。
+
+本脚本不生成 full_trace 数据，也不跑 full_trace backend。
+
+
+============================================================
+主要输出目录
+============================================================
+
+result 输出：
+
+results/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/nopref-workload-sweep
+results/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/pref-workload-sweep
+results/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/ideal-demand-workload-sweep
+results/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/ideal-l1pref-workload-sweep
+results/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/ideal-all-workload-sweep
+
+csv/figure 输出：
+
+csv_figure/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/select_trace
+
+
+============================================================
+常用命令
+============================================================
+
+查看当前配置和路径：
+
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh status
+
+完整流程：
+
+MAX_PARALLEL=15 N_WARM=20 N_SIM=50 \
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh all 15
+
+只 build 五个 bin：
+
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh build-only
+
+只运行完整流程中的 run 阶段：
+
+MAX_PARALLEL=15 N_WARM=20 N_SIM=50 \
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh run-only 15
+
+只跑 nopref 全 trace：
+
+MAX_PARALLEL=15 N_WARM=20 N_SIM=50 \
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh run-nopref 15
+
+只根据 nopref result 生成 selected trace JSON：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh select-json
+
+只跑筛选后的某个配置：
+
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh run-pref 15
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh run-demand 15
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh run-l1pref 15
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh run-allideal 15
+
+只做 select_trace 后处理和画图：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh backend
+
+清理当前实验的 csv_figure 输出：
+
+./launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh clean-csv
+
+
+============================================================
+常用环境变量
+============================================================
+
+MAX_PARALLEL：
+并行仿真数量，默认 4。
+
+N_WARM：
+warmup 指令数，单位是 million，默认 50。
+
+N_SIM：
+ROI 指令数，单位是 million，默认 200。
+
+SKIP_EXISTING：
+如果 result log 已存在且包含 [ROI Statistics]，则跳过，默认 1。
+如果 log 存在但不完整，会自动重跑。
+
+TRACE_FILTER：
+只跑某一类 trace，例如：
+
+TRACE_FILTER=649.fotonik3d_s
+TRACE_FILTER=gap.pr
+
+TRACE_DIRS：
+trace 搜索目录，默认：
+
+/data0/tzh/champsim_traces/SPEC06:/data0/tzh/champsim_traces/SPEC17:/data0/tzh/champsim_traces/GAP:/data0/tzh/champsim_traces/Ligra
+
+SELECT_THRESHOLD：
+筛选 trace 的 STLB MPKI 阈值，默认 1.0。

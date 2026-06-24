@@ -1,0 +1,91 @@
+Purpose
+=======
+
+This folder tests whether the paper-style L1D/L2C data-cache prefetchers
+are responsible for changing the IPC upper bound of ideal STLB all-hit
+modeling.
+
+It only compares:
+
+1. pref
+2. ideal-all
+
+The baseline for speedup is pref. The old comparison data is read from:
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/csv_figure/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/select_trace
+
+No existing launch script or source file is modified by this case.
+
+
+Trace Set
+=========
+
+Same as test-ideal-stlb-paper-env-pref-vs-all, excluding gap.pr.twitter-10B:
+
+- ligra_CF.com-lj.ungraph.gcc_6.3.0_O3.drop_184750M.length_250M
+- ligra_Components.com-lj.ungraph.gcc_6.3.0_O3.drop_6250M.length_250M
+- 620.omnetpp_s-141B
+- 483.xalancbmk-716B
+- gap.cc.twitter-10B
+
+Additional STLB-sensitive traces:
+
+- 433.milc-337B
+- 459.GemsFDTD-1169B
+
+
+Run Commands
+============
+
+Build, run, and summarize:
+
+MAX_PARALLEL=5 N_WARM=20 N_SIM=50 \
+./launch_sim/test-ideal-stlb-paper-prefetcher-only-pref-vs-all/run_test.sh all
+
+Only build:
+
+./launch_sim/test-ideal-stlb-paper-prefetcher-only-pref-vs-all/run_test.sh build
+
+Only run existing binaries:
+
+MAX_PARALLEL=5 N_WARM=20 N_SIM=50 \
+./launch_sim/test-ideal-stlb-paper-prefetcher-only-pref-vs-all/run_test.sh run
+
+Only regenerate CSV after logs exist:
+
+./launch_sim/test-ideal-stlb-paper-prefetcher-only-pref-vs-all/run_test.sh summary
+
+
+Output
+======
+
+Logs:
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/results/test-ideal-stlb-paper-prefetcher-only-pref-vs-all
+
+CSV:
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/csv_figure/test-ideal-stlb-paper-prefetcher-only-pref-vs-all/prefetcher_only_pref_vs_ideal_all_trace_compare.csv
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/csv_figure/test-ideal-stlb-paper-prefetcher-only-pref-vs-all/prefetcher_only_pref_vs_ideal_all_summary_compare.csv
+
+
+Config Changes In base_config.json
+==================================
+
+Base file:
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/ideal-all-workload-sweep/1C.fullBW.stlb.stats.json
+
+Only these two fields are changed:
+
+- L1D.prefetcher: berti -> next_line
+- L2C.prefetcher: pythia -> ip_stride
+
+Everything else intentionally remains the same as the jsonnew base file,
+including:
+
+- CPU core width and ROB.
+- L1I/L1D/L2C/LLC size, associativity, latency, MSHR, and replacement.
+- DRAM timing and capacity.
+- TLB, PTW, PSC, and page table configuration.

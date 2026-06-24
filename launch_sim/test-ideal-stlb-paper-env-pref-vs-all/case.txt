@@ -1,0 +1,93 @@
+Purpose
+=======
+
+This folder tests whether a paper-like core/cache/data-prefetcher
+environment changes the IPC upper bound of ideal STLB all-hit modeling.
+
+It only compares:
+
+1. pref
+2. ideal-all
+
+The baseline for speedup is pref. The old comparison data is read from:
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/csv_figure/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/select_trace
+
+No existing launch script or source file is modified by this case.
+
+
+Trace Set
+=========
+
+Based on test-ideal-stlb-config-sanity, excluding gap.pr.twitter-10B:
+
+- ligra_CF.com-lj.ungraph.gcc_6.3.0_O3.drop_184750M.length_250M
+- ligra_Components.com-lj.ungraph.gcc_6.3.0_O3.drop_6250M.length_250M
+- 620.omnetpp_s-141B
+- 483.xalancbmk-716B
+- gap.cc.twitter-10B
+
+Additional STLB-sensitive traces:
+
+- 433.milc-337B
+- 459.GemsFDTD-1169B
+
+
+Run Commands
+============
+
+Build, run, and summarize:
+
+MAX_PARALLEL=5 N_WARM=20 N_SIM=50 \
+./launch_sim/test-ideal-stlb-paper-env-pref-vs-all/run_test.sh all
+
+Only build:
+
+./launch_sim/test-ideal-stlb-paper-env-pref-vs-all/run_test.sh build
+
+Only run existing binaries:
+
+MAX_PARALLEL=5 N_WARM=20 N_SIM=50 \
+./launch_sim/test-ideal-stlb-paper-env-pref-vs-all/run_test.sh run
+
+Only regenerate CSV after logs exist:
+
+./launch_sim/test-ideal-stlb-paper-env-pref-vs-all/run_test.sh summary
+
+
+Output
+======
+
+Logs:
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/results/test-ideal-stlb-paper-env-pref-vs-all
+
+CSV:
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/csv_figure/test-ideal-stlb-paper-env-pref-vs-all/paper_env_pref_vs_ideal_all_trace_compare.csv
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/csv_figure/test-ideal-stlb-paper-env-pref-vs-all/paper_env_pref_vs_ideal_all_summary_compare.csv
+
+
+Config Changes In base_config.json
+==================================
+
+Base file:
+
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/ideal-all-workload-sweep/1C.fullBW.stlb.stats.json
+
+Paper-like changes applied only to this folder's base_config.json:
+
+- CPU core: keep/explicitly set 4GHz, 352-entry ROB, 4-wide fetch/decode/dispatch/execute/retire, hashed_perceptron. The paper states a 4-wide out-of-order processor; it does not give a ROB size, so ROB stays from the base JSON.
+- L1I: 32KB, 8-way, 1-cycle, 8-entry MSHR.
+- L1D: 32KB, 8-way, 4-cycle, 8-entry MSHR, next_line prefetcher.
+- L2C: 256KB, 8-way, 8-cycle, 16-entry MSHR, ip_stride prefetcher.
+- LLC: 2MB, 16-way, 20-cycle, 32-entry MSHR.
+- DRAM: 4GB, tCAS=tRCD=tRP=11.
+
+Unchanged on purpose:
+
+- TLB and PTW configuration.
+- PSC structure and page table level behavior.
+- Cache replacement policies unless the paper explicitly gave an equivalent value.
+- L1I and LLC prefetcher settings not explicitly specified by the paper table.
