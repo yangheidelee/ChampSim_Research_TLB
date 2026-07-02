@@ -80,8 +80,11 @@ BINARY_TAG=$(basename "$BINARY")
 OUTFILE="${RESULT_DIR}/${TRACE_TAG}-${BINARY_TAG}-${OPTION_TAG}.log"
 
 if [ -f "$OUTFILE" ] && [ "$SKIP_EXISTING" = "1" ]; then
-    echo "[SKIP] Existing output: $OUTFILE"
-    exit 0
+    if grep -q "^\[ROI Statistics\]" "$OUTFILE"; then
+        echo "[SKIP] Complete output: $OUTFILE"
+        exit 0
+    fi
+    echo "[RERUN] Incomplete output without [ROI Statistics]: $OUTFILE"
 fi
 
 echo "[CMD] $BINARY --warmup-instructions ${N_WARM}000000 --simulation-instructions ${N_SIM}000000 ${OPTIONS[*]-} $TRACE_PATH"

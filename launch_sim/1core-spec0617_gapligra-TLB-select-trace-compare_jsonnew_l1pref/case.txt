@@ -1,0 +1,122 @@
+# 1core SPEC06 + SPEC17 + GAP + Ligra selected-trace L1D/L2C prefetcher compare
+
+工作目录：
+
+cd /home/zcq/git_prj/ChampSim
+
+脚本目录：
+
+launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref
+
+本实验只跑之前已经筛好的 selected trace，不再先跑全量 trace 再筛选。
+
+默认复用的筛选文件：
+
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/data_process_for_compare/stlb_mpki_gt_1.0_selected_traces.json
+
+筛选口径：
+
+- baseline：旧实验 nopref
+- 指标：Core_0_STLB_total_MPKI
+- 条件：Core_0_STLB_total_MPKI > 1.0
+- 当前 selected trace 数：43
+
+本实验的 prefetcher 组合：
+
+- nopref-workload-sweep：L1I/L1D/L2C/LLC 均 no，用于 baseline
+- pref-workload-sweep：L1D=berti，L2C=pythia，原始 pref 配置
+- pref-ipcp-pythia-workload-sweep：L1D=ipcp，L2C=pythia
+- pref-berti-no-workload-sweep：L1D=berti，L2C=no
+- pref-berti-ip_stride-workload-sweep：L1D=berti，L2C=ip_stride
+- pref-sms-pythia-workload-sweep：L1D=sms，L2C=pythia
+
+full_trace 流程已禁用。本目录只产出 select_trace 结果。
+
+统计和聚合规则：
+
+- SPEC06 / SPEC17 / Ligra：同一 benchmark 下多个 trace 聚为同一个 workload
+- GAP：每个 trace 作为单独 workload
+- workload 内 IPC 使用 trace-level IPC 的 geomean
+- STLB MPKI 使用 sum(miss) * 1000 / sum(instructions)
+- STLB miss rate 使用 sum(miss) / sum(access)
+- DRAM read PKI 使用 sum(read_requests) * 1000 / sum(instructions)
+- miss-cause/share 类指标使用 sum(cause) / sum(total)
+- 数据集 summary 中 IPC 使用 geomean，MPKI/rate/share 仍使用 sum/sum
+
+常用命令：
+
+查看配置：
+
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/run_tlb_select_compare.sh status
+
+完整流程，只跑 selected trace：
+
+MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/run_tlb_select_compare.sh all 15
+
+smoke test，可与 selected JSON 取交集：
+
+TRACE_FILTER=649.fotonik3d_s N_WARM=2 N_SIM=5 MAX_PARALLEL=4 SKIP_EXISTING=0 \
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/run_tlb_select_compare.sh all 4
+
+只构建：
+
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/run_tlb_select_compare.sh build-only
+
+只运行 selected trace，不做后处理：
+
+MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/run_tlb_select_compare.sh run-only 15
+
+只做 selected-trace 后处理和画图：
+
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/run_tlb_select_compare.sh backend
+
+只重画多配置 vs nopref 对比图：
+
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/run_tlb_select_compare.sh compare
+
+主要输出目录：
+
+results/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/nopref-workload-sweep
+results/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/pref-workload-sweep
+results/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/pref-ipcp-pythia-workload-sweep
+results/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/pref-berti-no-workload-sweep
+results/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/pref-berti-ip_stride-workload-sweep
+results/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/pref-sms-pythia-workload-sweep
+
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/nopref-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/pref-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/pref-ipcp-pythia-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/pref-berti-no-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/pref-berti-ip_stride-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/pref-sms-pythia-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/data_process_for_compare
+
+生成的 bin：
+
+bin/tlb-nopref-1core
+bin/tlb-pref-berti-pythia-1core
+bin/tlb-pref-ipcp-pythia-1core
+bin/tlb-pref-berti-no-1core
+bin/tlb-pref-berti-ip_stride-1core
+bin/tlb-pref-sms-pythia-1core
+
+关键 compare 输出：
+
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.csv
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.png
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/data_process_for_compare/pref_vs_nopref_stlb_mpki_norm.png
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/data_process_for_compare/pref_vs_nopref_stlb_miss_rate_norm.png
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew_l1pref/select_trace/data_process_for_compare/pref_vs_nopref_dram_rq_read_pki_norm.png
+
+常用环境变量：
+
+- MAX_PARALLEL：并行仿真数量，默认 4
+- N_WARM：warmup 指令数，单位 million，默认 50
+- N_SIM：ROI 指令数，单位 million，默认 200
+- SKIP_EXISTING：已有 result log 是否跳过，默认 1
+- TRACE_FILTER：在 selected trace 集合上再做 trace 名前缀过滤
+- TRACE_DIRS：trace 搜索目录，默认 SPEC06/SPEC17/GAP/Ligra 四个目录
+- SELECT_TRACE_JSON：覆盖默认复用的 selected trace JSON
+- BASELINE_SELECT_TAG：覆盖默认 selected JSON 所在的旧实验 tag

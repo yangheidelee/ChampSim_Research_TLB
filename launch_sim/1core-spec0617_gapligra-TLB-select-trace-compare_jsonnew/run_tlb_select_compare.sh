@@ -32,6 +32,7 @@ N_SIM=${N_SIM:-200}
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 TRACE_FILTER=${TRACE_FILTER:-${BENCH_FILTER:-}}
 SELECT_THRESHOLD=${SELECT_THRESHOLD:-1.0}
+SELECT_TRACE_JSON=${SELECT_TRACE_JSON:-}
 
 NOPREF_DIR="${SCRIPT_DIR}/${NOPREF_TAG}"
 PREF_DIR="${SCRIPT_DIR}/${PREF_TAG}"
@@ -51,7 +52,22 @@ flow_root() {
 }
 
 select_trace_json() {
-    echo "$(flow_root)/data_process_for_compare/stlb_mpki_gt_${SELECT_THRESHOLD}_selected_traces.json"
+    if [ -n "$SELECT_TRACE_JSON" ]; then
+        echo "$SELECT_TRACE_JSON"
+    else
+        echo "$(flow_root)/data_process_for_compare/stlb_mpki_gt_${SELECT_THRESHOLD}_selected_traces.json"
+    fi
+}
+
+require_select_trace_json() {
+    local selected
+    selected="$(select_trace_json)"
+    if [ ! -f "$selected" ]; then
+        echo "[ERROR] Selected trace JSON not found: $selected" >&2
+        echo "[ERROR] Run select-json first, or set SELECT_TRACE_JSON=/path/to/json." >&2
+        exit 1
+    fi
+    echo "$selected"
 }
 
 ensure_exec() {
@@ -97,14 +113,16 @@ do_run_nopref() {
     local p=${1:-$MAX_PARALLEL}
     echo "[STEP] run nopref (parallel=$p)"
     TRACE_DIRS="$TRACE_DIRS" MAX_PARALLEL="$p" SKIP_EXISTING="$SKIP_EXISTING" DO_BUILD=0 N_WARM="$N_WARM" N_SIM="$N_SIM" \
-        TRACE_FILTER="$TRACE_FILTER" "$RUN_NOPREF" "$p" "$TRACE_FILTER"
+        TRACE_FILTER="$TRACE_FILTER" SELECT_TRACE_JSON= "$RUN_NOPREF" "$p" "$TRACE_FILTER"
 }
 
 do_run_pref() {
     local p=${1:-$MAX_PARALLEL}
+    local selected
+    selected="$(require_select_trace_json)"
     echo "[STEP] run pref (parallel=$p)"
     TRACE_DIRS="$TRACE_DIRS" MAX_PARALLEL="$p" SKIP_EXISTING="$SKIP_EXISTING" DO_BUILD=0 N_WARM="$N_WARM" N_SIM="$N_SIM" \
-        TRACE_FILTER="$TRACE_FILTER" "$RUN_PREF" "$p" "$TRACE_FILTER"
+        TRACE_FILTER="$TRACE_FILTER" SELECT_TRACE_JSON="$selected" "$RUN_PREF" "$p" "$TRACE_FILTER"
 }
 
 do_select_json() {
@@ -130,25 +148,10 @@ do_compare() {
     FLOW_TAG="$FLOW_TAG" "$COMPARE_SCRIPT"
 }
 
-do_full_csv_nopref() {
-    echo "[STEP] nopref full-trace CSV/figures"
-    FLOW_TAG="full_trace" SELECT_TRACE_JSON="ALL" "$CSV_NOPREF"
-}
-
-do_full_csv_pref() {
-    echo "[STEP] pref full-trace CSV/figures"
-    FLOW_TAG="full_trace" SELECT_TRACE_JSON="ALL" "$CSV_PREF"
-}
-
-do_full_compare() {
-    echo "[STEP] full-trace IPC/STLB compare"
-    FLOW_TAG="full_trace" "$COMPARE_SCRIPT"
-}
-
 do_full_backend() {
-    do_full_csv_nopref
-    do_full_csv_pref
-    do_full_compare
+    echo "[ERROR] full_trace backend is disabled because pref now runs only selected traces." >&2
+    echo "[ERROR] Use backend/figures for selected-trace outputs." >&2
+    exit 1
 }
 
 show_status() {
@@ -162,11 +165,11 @@ show_status() {
     echo "N_SIM         : $N_SIM"
     echo "SKIP_EXISTING : $SKIP_EXISTING"
     echo "THRESHOLD     : $SELECT_THRESHOLD"
+    echo "SELECT_JSON   : $(select_trace_json)"
     echo "RESULT_NOPREF : ${CHAMPSIM_ROOT}/results/${COMPARE_TAG}/${NOPREF_TAG}"
     echo "RESULT_PREF   : ${CHAMPSIM_ROOT}/results/${COMPARE_TAG}/${PREF_TAG}"
     echo "CSV_ROOT      : $(flow_root)"
-    echo "FULL_CSV_ROOT : ${CHAMPSIM_ROOT}/csv_figure/${COMPARE_TAG}/full_trace"
-    echo "SELECT_JSON   : $(select_trace_json)"
+    echo "FULL_CSV_ROOT : disabled; pref runs selected traces only"
     echo "=================================================="
 }
 
@@ -181,12 +184,11 @@ case "$cmd" in
         do_build_nopref
         do_build_pref
         do_run_nopref "$MAX_PARALLEL"
-        do_run_pref "$MAX_PARALLEL"
         do_select_json
+        do_run_pref "$MAX_PARALLEL"
         do_csv_nopref
         do_csv_pref
         do_compare
-        do_full_backend
         ;;
     build-only)
         check_env
@@ -196,6 +198,7 @@ case "$cmd" in
     run-only)
         check_env
         do_run_nopref "${2:-$MAX_PARALLEL}"
+        do_select_json
         do_run_pref "${2:-$MAX_PARALLEL}"
         ;;
     select-json)
@@ -219,7 +222,6 @@ case "$cmd" in
         do_csv_nopref
         do_csv_pref
         do_compare
-        do_full_backend
         ;;
     compare)
         check_env

@@ -29,6 +29,16 @@ champsim::channel::channel(std::size_t rq_size, std::size_t pq_size, std::size_t
 {
 }
 
+void append_ptw_dram_touched_flags(champsim::channel::request_type& destination, const champsim::channel::request_type& source)
+{
+  for (const auto& flag : source.ptw_dram_touched_flags) {
+    const auto found = std::find_if(std::begin(destination.ptw_dram_touched_flags), std::end(destination.ptw_dram_touched_flags),
+                                    [&flag](const auto& existing) { return existing.get() == flag.get(); });
+    if (found == std::end(destination.ptw_dram_touched_flags))
+      destination.ptw_dram_touched_flags.push_back(flag);
+  }
+}
+
 template <typename Iter, typename F>
 bool do_collision_for(Iter begin, Iter end, champsim::channel::request_type& packet, champsim::data::bits shamt, F&& func)
 {
@@ -55,6 +65,7 @@ bool do_collision_for_merge(Iter begin, Iter end, champsim::channel::request_typ
 
     std::set_union(std::begin(instr_copy), std::end(instr_copy), std::begin(source.instr_depend_on_me), std::end(source.instr_depend_on_me),
                    std::back_inserter(destination.instr_depend_on_me));
+    append_ptw_dram_touched_flags(destination, source);
   });
 }
 

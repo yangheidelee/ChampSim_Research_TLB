@@ -6,7 +6,7 @@ cd /home/zcq/git_prj/ChampSim
 
 本脚本文件夹只处理当前实验：
 
-launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare
+launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew
 
 实验目标：
 
@@ -20,23 +20,24 @@ launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare
    - /data0/tzh/champsim_traces/GAP
    - /data0/tzh/champsim_traces/Ligra
 
-3. 先跑 nopref，再跑 pref。
+3. 先跑 nopref 全量 trace。
 
 4. 用 nopref 结果筛选 trace：
    - 指标：Core_0_STLB_total_MPKI
    - 条件：Core_0_STLB_total_MPKI > 1.0
 
-5. 默认对筛选出的 trace 做后处理：
+5. pref 只跑 nopref 筛选出的 selected trace。
+
+6. 默认只对筛选出的 trace 做后处理：
    - 每个配置各自输出 trace-level CSV
    - 每个配置各自输出 workload-level CSV
    - 每个配置各自画 STLB miss cause 百分比堆积柱状图
    - 对 pref vs nopref 做 IPC 对比
    - 对 pref vs nopref 做 STLB total miss rate 归一化对比
 
-6. 也支持 full_trace 后处理：
-   - 不做 STLB MPKI trace 筛选
-   - 直接使用 result 目录下所有可解析的 trace log
-   - 聚合公式和 select_trace 完全一致
+7. full_trace 后处理默认关闭：
+   - 因为 pref 现在只跑 selected trace
+   - 避免拿 nopref 全量 trace 和 pref selected trace 混在一起做 full_trace 对比
 
 统计和聚合规则：
 
@@ -63,16 +64,12 @@ launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare
 
 主要输出目录：
 
-results/1core-spec0617_gapligra-TLB-select-trace-compare/nopref-workload-sweep
-results/1core-spec0617_gapligra-TLB-select-trace-compare/pref-workload-sweep
+results/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/nopref-workload-sweep
+results/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/pref-workload-sweep
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/nopref-workload-sweep
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/pref-workload-sweep
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/data_process_for_compare
-
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/full_trace/nopref-workload-sweep
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/full_trace/pref-workload-sweep
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/full_trace/data_process_for_compare
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/nopref-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/pref-workload-sweep
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/data_process_for_compare
 
 生成的 bin：
 
@@ -86,77 +83,78 @@ bin/tlb-pref-1core
 
 查看当前配置和输出路径：
 
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh status
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh status
 
 
 完整流程，遍历 SPEC06 + SPEC17 + GAP + Ligra：
 
 MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh all 15
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh all 15
 
-N_WARM=2 N_SIM=5 ./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh all 15
+N_WARM=2 N_SIM=5 ./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh all 15
 
 
 小范围 smoke test，只跑 649.fotonik3d_s：
 
 TRACE_FILTER=649.fotonik3d_s N_WARM=2 N_SIM=5 MAX_PARALLEL=4 SKIP_EXISTING=0 \
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh all 4
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh all 4
 
 
 只构建两个 bin：
 
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh build-only
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh build-only
 
 
 只运行 workload，不做后处理：
 
 MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh run-only 15
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh run-only 15
 
 
 只跑 nopref：
 
 MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh run-nopref 15
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh run-nopref 15
 
 
 只跑 pref：
+需要先有 selected trace JSON；默认路径来自 nopref 后处理筛选结果。
 
 MAX_PARALLEL=15 N_WARM=50 N_SIM=200 \
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh run-pref 15
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh run-pref 15
 
 
 只根据 nopref result 生成筛选 trace 的 JSON：
 
 SELECT_THRESHOLD=1.0 \
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh select-json
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh select-json
 
 
 只做后处理和画图：
 
 SELECT_THRESHOLD=1.0 \
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh backend
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh backend
 
 
-只做 full_trace 后处理和画图，不做 trace 筛选：
+full_trace 后处理入口现在会直接报错，避免误用：
 
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh full-backend
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh full-backend
 
 
-同时生成 select_trace 和 full_trace 后处理结果：
+backend-all 现在等价于 selected trace 后处理：
 
 SELECT_THRESHOLD=1.0 \
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh backend-all
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh backend-all
 
 
 只做 IPC 对比：
 
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh compare
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh compare
 
 
 清理当前实验的 csv_figure 输出：
 
-./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare/run_tlb_select_compare.sh clean-csv
+./launch_sim/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/run_tlb_select_compare.sh clean-csv
 
 
 ============================================================
@@ -173,7 +171,8 @@ N_SIM：
 ROI 指令数，单位是 million，默认 200。
 
 SKIP_EXISTING：
-如果 result log 已存在是否跳过，默认 1。
+如果 result log 已存在且包含 [ROI Statistics] 是否跳过，默认 1。
+已有 log 但没有完整 [ROI Statistics] 时，会自动重跑。
 
 TRACE_FILTER：
 只跑某一类 trace，例如：
@@ -189,6 +188,11 @@ trace 搜索目录，默认：
 SELECT_THRESHOLD：
 筛选 trace 的 STLB MPKI 阈值，默认 1.0。
 
+SELECT_TRACE_JSON：
+手动指定 selected trace JSON。默认使用：
+
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/data_process_for_compare/stlb_mpki_gt_1.0_selected_traces.json
+
 
 ============================================================
 关键输出文件
@@ -196,51 +200,45 @@ SELECT_THRESHOLD：
 
 筛选 trace JSON：
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/data_process_for_compare/stlb_mpki_gt_1.0_selected_traces.json
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/data_process_for_compare/stlb_mpki_gt_1.0_selected_traces.json
 
 
 nopref trace-level 数据：
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/nopref-workload-sweep/nopref_trace_level.csv
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/nopref-workload-sweep/nopref_trace_level.csv
 
 nopref workload-level 数据：
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/nopref-workload-sweep/nopref_workload_agg.csv
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/nopref-workload-sweep/nopref_workload_agg.csv
 
 nopref STLB miss cause 图：
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/nopref-workload-sweep/nopref_stlb_miss_causes.png
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/nopref-workload-sweep/nopref_stlb_miss_causes.png
 
 
 pref trace-level 数据：
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/pref-workload-sweep/pref_trace_level.csv
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/pref-workload-sweep/pref_trace_level.csv
 
 pref workload-level 数据：
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/pref-workload-sweep/pref_workload_agg.csv
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/pref-workload-sweep/pref_workload_agg.csv
 
 pref STLB miss cause 图：
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/pref-workload-sweep/pref_stlb_miss_causes.png
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/pref-workload-sweep/pref_stlb_miss_causes.png
 
 
 IPC 对比：
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.csv
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.png
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.csv
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.png
 
 STLB total miss rate 归一化对比：
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/select_trace/data_process_for_compare/pref_vs_nopref_stlb_miss_rate_norm.png
+csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare_jsonnew/select_trace/data_process_for_compare/pref_vs_nopref_stlb_miss_rate_norm.png
 
 
 full_trace 结果：
 
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/full_trace/nopref-workload-sweep/nopref_trace_level.csv
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/full_trace/nopref-workload-sweep/nopref_workload_agg.csv
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/full_trace/pref-workload-sweep/pref_trace_level.csv
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/full_trace/pref-workload-sweep/pref_workload_agg.csv
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/full_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.csv
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/full_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.png
-csv_figure/1core-spec0617_gapligra-TLB-select-trace-compare/full_trace/data_process_for_compare/pref_vs_nopref_stlb_miss_rate_norm.png
+当前流程不再生成 full_trace 结果。

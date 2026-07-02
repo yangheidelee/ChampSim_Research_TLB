@@ -32,6 +32,18 @@
 #include "util/bits.h"
 #include "util/span.h"
 
+namespace
+{
+void append_ptw_dram_touched_flags(std::vector<std::shared_ptr<bool>>& destination, const std::vector<std::shared_ptr<bool>>& source)
+{
+  for (const auto& flag : source) {
+    const auto found = std::find_if(std::begin(destination), std::end(destination), [&flag](const auto& existing) { return existing.get() == flag.get(); });
+    if (found == std::end(destination))
+      destination.push_back(flag);
+  }
+}
+} // namespace
+
 CACHE::CACHE(CACHE&& other)
     : operable(other),
 
@@ -95,14 +107,14 @@ auto CACHE::operator=(CACHE&& other) -> CACHE&
 CACHE::tag_lookup_type::tag_lookup_type(const request_type& req, bool local_pref, bool skip)
     : address(req.address), v_address(req.v_address), data(req.data), ip(req.ip), instr_id(req.instr_id), pf_metadata(req.pf_metadata), cpu(req.cpu),
       type(req.type), translation_source(req.translation_source), prefetch_from_this(local_pref), skip_fill(skip), is_translated(req.is_translated), is_instr(req.is_instr),
-      instr_depend_on_me(req.instr_depend_on_me)
+      instr_depend_on_me(req.instr_depend_on_me), ptw_dram_touched_flags(req.ptw_dram_touched_flags)
 {
 }
 
 CACHE::mshr_type::mshr_type(const tag_lookup_type& req, champsim::chrono::clock::time_point _time_enqueued)
     : address(req.address), v_address(req.v_address), ip(req.ip), instr_id(req.instr_id), cpu(req.cpu), type(req.type),
       prefetch_from_this(req.prefetch_from_this), is_instr(req.is_instr), time_enqueued(_time_enqueued), instr_depend_on_me(req.instr_depend_on_me),
-      to_return(req.to_return)
+      ptw_dram_touched_flags(req.ptw_dram_touched_flags), to_return(req.to_return)
 {
 }
 
@@ -124,6 +136,8 @@ CACHE::mshr_type CACHE::mshr_type::merge(mshr_type predecessor, mshr_type succes
   retval.instr_depend_on_me = merged_instr;
   retval.to_return = merged_return;
   retval.data_promise = predecessor.data_promise;
+  retval.ptw_dram_touched_flags = predecessor.ptw_dram_touched_flags;
+  append_ptw_dram_touched_flags(retval.ptw_dram_touched_flags, successor.ptw_dram_touched_flags);
 
   if constexpr (champsim::debug_print) {
     if (successor.type == access_type::PREFETCH) {
@@ -328,6 +342,8 @@ auto CACHE::mshr_and_forward_packet(const tag_lookup_type& handle_pkt) -> std::p
   fwd_pkt.is_instr = handle_pkt.is_instr;
 
   fwd_pkt.instr_depend_on_me = handle_pkt.instr_depend_on_me;
+  fwd_pkt.ptw_dram_touched_flags = handle_pkt.ptw_dram_touched_flags;
+  fwd_pkt.count_ptw_dram_touch = is_stlb() && !warmup;
   fwd_pkt.response_requested = (!handle_pkt.prefetch_from_this || !handle_pkt.skip_fill);
 
   return std::pair{std::move(to_allocate), std::move(fwd_pkt)};
@@ -607,6 +623,12 @@ bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint3
   pf_packet.address = pf_addr;
   pf_packet.v_address = virtual_prefetch ? pf_addr : champsim::address{};
   pf_packet.is_translated = !virtual_prefetch;
+  pf_packet.is_instr = NAME.size() >= 4 && NAME.compare(NAME.size() - 4, 4, "_L1I") == 0;
+  if (pf_packet.is_instr) {
+    pf_packet.translation_source = translation_origin::L1I_PREFETCH;
+  } else if (NAME.size() >= 4 && NAME.compare(NAME.size() - 4, 4, "_L1D") == 0) {
+    pf_packet.translation_source = translation_origin::L1D_PREFETCH;
+  }
 
   internal_PQ.emplace_back(pf_packet, true, !fill_this_level);
   ++sim_stats.pf_issued;

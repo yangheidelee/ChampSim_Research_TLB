@@ -543,6 +543,54 @@ bool MEMORY_CONTROLLER::add_rq(const request_type& packet, champsim::channel* ul
     if (packet.response_requested)
       rq_it->value().to_return = {&ul->returned};
 
+    auto& stats = channel.sim_stats;
+    ++stats.rq_read_total_observed;
+    switch (packet.type) {
+    case access_type::LOAD:
+      if (packet.is_instr)
+        ++stats.rq_read_inst_demand;
+      else
+        ++stats.rq_read_data_demand;
+      break;
+    case access_type::RFO:
+      ++stats.rq_read_data_demand;
+      break;
+    case access_type::PREFETCH:
+      if (packet.is_instr)
+        ++stats.rq_read_cache_inst_prefetch;
+      else
+        ++stats.rq_read_cache_data_prefetch;
+      break;
+    case access_type::TRANSLATION:
+      switch (packet.translation_source) {
+      case translation_origin::DEMAND_DATA:
+        ++stats.rq_read_stlb_data_demand;
+        break;
+      case translation_origin::DEMAND_INSTRUCTION:
+        ++stats.rq_read_stlb_inst_demand;
+        break;
+      case translation_origin::L1D_PREFETCH:
+        ++stats.rq_read_stlb_l1d_pref;
+        break;
+      case translation_origin::L1I_PREFETCH:
+        ++stats.rq_read_stlb_l1i_pref;
+        break;
+      case translation_origin::OTHER:
+      case translation_origin::NUM_TYPES:
+        ++stats.rq_read_unclassified;
+        break;
+      }
+      for (const auto& flag : packet.ptw_dram_touched_flags) {
+        if (flag)
+          *flag = true;
+      }
+      break;
+    case access_type::WRITE:
+    case access_type::NUM_TYPES:
+      ++stats.rq_read_unclassified;
+      break;
+    }
+
     return true;
   }
 

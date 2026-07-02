@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <deque>
 #include <limits>
+#include <memory>
 #include <string_view>
 #include <vector>
 
@@ -69,6 +70,8 @@ class channel
     champsim::address ip{};
 
     std::vector<uint64_t> instr_depend_on_me{};
+    std::vector<std::shared_ptr<bool>> ptw_dram_touched_flags{};
+    bool count_ptw_dram_touch = false;
   };
 
   struct response {

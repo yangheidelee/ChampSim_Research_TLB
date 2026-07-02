@@ -47,7 +47,7 @@ PageTableWalker::PageTableWalker(champsim::ptw_builder b)
 
 PageTableWalker::mshr_type::mshr_type(const request_type& req, std::size_t level)
     : address(req.address), v_address(req.v_address), instr_depend_on_me(req.instr_depend_on_me), pf_metadata(req.pf_metadata), cpu(req.cpu),
-      translation_level(level)
+      translation_source(req.translation_source), count_ptw_dram_touch(req.count_ptw_dram_touch), translation_level(level)
 {
   asid[0] = req.asid[0];
   asid[1] = req.asid[1];
@@ -110,6 +110,9 @@ auto PageTableWalker::step_translation(const mshr_type& source) -> std::optional
   packet.asid[1] = source.asid[1];
   packet.is_translated = true;
   packet.type = access_type::TRANSLATION;
+  packet.translation_source = source.translation_source;
+  if (source.ptw_dram_touched)
+    packet.ptw_dram_touched_flags = {source.ptw_dram_touched};
 
   bool success = lower_level->add_rq(packet);
   if (success) {
@@ -134,7 +137,15 @@ long PageTableWalker::operate()
 
   champsim::bandwidth fill_bw{MAX_FILL};
   auto [complete_begin, complete_end] = champsim::get_span_p(std::cbegin(completed), std::cend(completed), fill_bw, is_ready);
-  std::for_each(complete_begin, complete_end, [](auto& mshr_entry) {
+  std::for_each(complete_begin, complete_end, [this](auto& mshr_entry) {
+    if (mshr_entry.count_ptw_dram_touch) {
+      ++this->sim_stats.stlb_miss_total;
+      if (mshr_entry.ptw_dram_touched && *mshr_entry.ptw_dram_touched)
+        ++this->sim_stats.stlb_miss_touch_dram;
+      else
+        ++this->sim_stats.stlb_miss_no_dram_touch;
+    }
+
     for (auto ret : mshr_entry.to_return) {
       ret->emplace_back(mshr_entry.v_address, mshr_entry.v_address, *mshr_entry.data, mshr_entry.pf_metadata, mshr_entry.instr_depend_on_me);
     }
@@ -224,6 +235,9 @@ void PageTableWalker::finish_packet(const response_type& packet)
 
 void PageTableWalker::begin_phase()
 {
+  sim_stats = {};
+  roi_stats = {};
+
   for (auto* ul : upper_levels) {
     channel_type::stats_type ul_new_roi_stats;
     channel_type::stats_type ul_new_sim_stats;
@@ -231,6 +245,8 @@ void PageTableWalker::begin_phase()
     ul->sim_stats = ul_new_sim_stats;
   }
 }
+
+void PageTableWalker::end_phase(unsigned /*cpu*/) { roi_stats = sim_stats; }
 
 // LCOV_EXCL_START Exclude the following function from LCOV
 void PageTableWalker::print_deadlock()

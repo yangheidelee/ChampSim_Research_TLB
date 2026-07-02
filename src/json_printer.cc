@@ -80,8 +80,25 @@ void to_json(nlohmann::json& j, const DRAM_CHANNEL::stats_type stats)
                      {"RQ ROW_BUFFER_MISS", stats.RQ_ROW_BUFFER_MISS},
                      {"WQ ROW_BUFFER_HIT", stats.WQ_ROW_BUFFER_HIT},
                      {"WQ ROW_BUFFER_MISS", stats.WQ_ROW_BUFFER_MISS},
+                     {"DRAM RQ read data demand", stats.rq_read_data_demand},
+                     {"DRAM RQ read inst demand", stats.rq_read_inst_demand},
+                     {"DRAM RQ read cache inst prefetch", stats.rq_read_cache_inst_prefetch},
+                     {"DRAM RQ read cache data prefetch", stats.rq_read_cache_data_prefetch},
+                     {"DRAM RQ read STLB data demand", stats.rq_read_stlb_data_demand},
+                     {"DRAM RQ read STLB inst demand", stats.rq_read_stlb_inst_demand},
+                     {"DRAM RQ read STLB L1I prefetch", stats.rq_read_stlb_l1i_pref},
+                     {"DRAM RQ read STLB L1D prefetch", stats.rq_read_stlb_l1d_pref},
+                     {"DRAM RQ read unclassified", stats.rq_read_unclassified},
+                     {"DRAM RQ read total observed", stats.rq_read_total_observed},
                      {"AVG DBUS CONGESTED CYCLE", (std::ceil(stats.dbus_cycle_congested) / std::ceil(stats.dbus_count_congested))},
                      {"REFRESHES ISSUED", stats.refresh_cycles}};
+}
+
+void to_json(nlohmann::json& j, const PageTableWalker::stats_type stats)
+{
+  j = nlohmann::json{{"STLB miss total", stats.stlb_miss_total},
+                     {"STLB miss touch DRAM", stats.stlb_miss_touch_dram},
+                     {"STLB miss no DRAM touch", stats.stlb_miss_no_dram_touch}};
 }
 
 namespace champsim
@@ -91,6 +108,7 @@ void to_json(nlohmann::json& j, const champsim::phase_stats stats)
   std::map<std::string, nlohmann::json> roi_stats;
   roi_stats.emplace("cores", stats.roi_cpu_stats);
   roi_stats.emplace("DRAM", stats.roi_dram_stats);
+  roi_stats.emplace("PTW", stats.roi_ptw_stats);
   for (auto x : stats.roi_cache_stats) {
     roi_stats.emplace(x.name, x);
   }
@@ -98,6 +116,7 @@ void to_json(nlohmann::json& j, const champsim::phase_stats stats)
   std::map<std::string, nlohmann::json> sim_stats;
   sim_stats.emplace("cores", stats.sim_cpu_stats);
   sim_stats.emplace("DRAM", stats.sim_dram_stats);
+  sim_stats.emplace("PTW", stats.sim_ptw_stats);
   for (auto x : stats.sim_cache_stats) {
     sim_stats.emplace(x.name, x);
   }

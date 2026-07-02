@@ -16,7 +16,7 @@
 
 #include "pythia_params.h"
 
-#define Bitmap std::bitset<64UL>
+using Bitmap = std::bitset<64UL>;
 
 typedef enum {
   none = 0,

@@ -20,10 +20,12 @@
 #include <array>
 #include <deque>
 #include <limits>   // for numeric_limits
+#include <memory>
 #include <optional> // for optional
 #include <string>
 
 #include "address.h"
+#include "access_type.h"
 #include "bandwidth.h"
 #include "channel.h"
 #include "operable.h"
@@ -60,6 +62,9 @@ class PageTableWalker : public champsim::operable
 
     uint32_t pf_metadata = 0;
     uint32_t cpu = std::numeric_limits<uint32_t>::max();
+    translation_origin translation_source = translation_origin::OTHER;
+    std::shared_ptr<bool> ptw_dram_touched = std::make_shared<bool>(false);
+    bool count_ptw_dram_touch = false;
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
 
     std::size_t translation_level = 0;
@@ -81,6 +86,12 @@ class PageTableWalker : public champsim::operable
   void finish_packet(const response_type& packet);
 
 public:
+  struct stats_type {
+    uint64_t stlb_miss_total = 0;
+    uint64_t stlb_miss_touch_dram = 0;
+    uint64_t stlb_miss_no_dram_touch = 0;
+  };
+
   const std::string NAME;
   const uint32_t MSHR_SIZE;
   champsim::bandwidth::maximum_type MAX_READ, MAX_FILL;
@@ -90,12 +101,14 @@ public:
   VirtualMemory* vmem;
 
   const champsim::address CR3_addr;
+  stats_type sim_stats{}, roi_stats{};
 
   explicit PageTableWalker(champsim::ptw_builder builder);
 
   long operate() final;
 
   void begin_phase() final;
+  void end_phase(unsigned cpu) final;
   void print_deadlock() final;
 };
 

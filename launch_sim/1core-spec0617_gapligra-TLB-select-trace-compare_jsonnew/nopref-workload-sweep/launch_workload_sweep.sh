@@ -33,6 +33,7 @@ RUN_SCRIPT="${SCRIPT_DIR}/run_1core.sh"
 BUILD_INFO_FILE="${SCRIPT_DIR}/build_info.env"
 TRACE_DIRS="${TRACE_DIRS:-/data0/tzh/champsim_traces/SPEC06:/data0/tzh/champsim_traces/SPEC17:/data0/tzh/champsim_traces/GAP:/data0/tzh/champsim_traces/Ligra}"
 TRACE_FILTER=${2:-${TRACE_FILTER:-${BENCH_FILTER:-}}}
+SELECT_TRACE_JSON=${SELECT_TRACE_JSON:-}
 SKIP_EXISTING=${SKIP_EXISTING:-1}
 DO_BUILD=${DO_BUILD:-1}
 N_WARM=${N_WARM:-}
@@ -77,8 +78,41 @@ for trace_dir in "${TRACE_DIR_ARRAY[@]}"; do
     fi
 done
 shopt -u nullglob
+
+if [ -n "$SELECT_TRACE_JSON" ] && [[ "${SELECT_TRACE_JSON^^}" != "ALL" ]] && [[ "${SELECT_TRACE_JSON^^}" != "FULL" ]] && [[ "${SELECT_TRACE_JSON^^}" != "NONE" ]]; then
+    if [ ! -f "$SELECT_TRACE_JSON" ]; then
+        echo "[ERROR] SELECT_TRACE_JSON not found: $SELECT_TRACE_JSON"
+        exit 1
+    fi
+    mapfile -t TRACE_FILES < <(python3 - "$SELECT_TRACE_JSON" "${TRACE_FILES[@]}" <<'PY'
+import json
+import pathlib
+import sys
+
+selected = set(json.loads(pathlib.Path(sys.argv[1]).read_text()).get("selected_trace_tags", []))
+
+def trace_tag(path_text: str) -> str:
+    name = pathlib.Path(path_text).name
+    for suffix in [".xz", ".gz"]:
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
+    if name.endswith(".champsimtrace"):
+        name = name[: -len(".champsimtrace")]
+    return name
+
+for path_text in sys.argv[2:]:
+    if trace_tag(path_text) in selected:
+        print(path_text)
+PY
+)
+fi
+
 if [ "${#TRACE_FILES[@]}" -eq 0 ]; then
     echo "[ERROR] No SPEC06/SPEC17/GAP/Ligra trace files found in: $TRACE_DIRS"
+    if [ -n "$SELECT_TRACE_JSON" ]; then
+        echo "[ERROR] SELECT_TRACE_JSON filter: $SELECT_TRACE_JSON"
+    fi
     exit 1
 fi
 
@@ -97,6 +131,7 @@ RUN_N_SIM=${N_SIM:-${DEFAULT_N_SIM}}
 echo "[INFO] parallel simulations: ${MAX_PARALLEL}"
 echo "[INFO] compare tag=${COMPARE_TAG} config tag=${CONFIG_TAG} skip_existing=${SKIP_EXISTING}"
 echo "[INFO] trace dirs=${TRACE_DIRS} filter=${TRACE_FILTER:-<none>}"
+echo "[INFO] selected trace json=${SELECT_TRACE_JSON:-<none>} trace_count=${#TRACE_FILES[@]}"
 
 running_jobs=0
 for trace_path in "${TRACE_FILES[@]}"; do

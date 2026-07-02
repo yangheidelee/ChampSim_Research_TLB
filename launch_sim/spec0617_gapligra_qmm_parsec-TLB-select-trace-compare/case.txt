@@ -1,0 +1,263 @@
+# 1core SPEC06 + SPEC17 + GAP + Ligra + QMM + PARSEC + XSBench TLB select-trace compare
+
+工作目录：
+
+cd /home/zcq/git_prj/ChampSim
+
+本脚本文件夹只处理当前实验：
+
+launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare
+
+实验目标：
+
+1. 构建两个 ChampSim bin：
+   - nopref-workload-sweep：不开 cache prefetcher，用于 baseline 和 trace 筛选
+   - pref-workload-sweep：开启 prefetcher，用于和 nopref 做 IPC 对比
+
+2. 遍历 trace 目录：
+   - /data0/tzh/champsim_traces/SPEC06
+   - /data0/tzh/champsim_traces/SPEC17
+   - /data2/zcq/champsim_traces_gap
+   - /data0/tzh/champsim_traces/Ligra
+   - /data0/tzh/champsim_traces/QMM
+   - /data0/tzh/champsim_traces/PARSEC
+   - /data2/zcq/champsim_traces_xsbench
+
+3. 先跑 nopref 全量 trace。
+
+4. 用 nopref 结果筛选 trace：
+   - 指标：Core_0_STLB_total_MPKI
+   - 条件：Core_0_STLB_total_MPKI > 1.0
+
+5. pref 只跑 nopref 筛选出的 selected trace。
+
+pref 配置：
+
+- L1D prefetcher：berti
+- L2C prefetcher：ip_stride
+
+6. 默认只对筛选出的 trace 做后处理：
+   - 每个配置各自输出 trace-level CSV
+   - 每个配置各自输出 workload-level CSV
+   - 每个配置各自画 STLB miss cause 百分比堆积柱状图
+   - 对 pref vs nopref 做 IPC 对比
+   - 对 pref vs nopref 做 STLB total miss rate 归一化对比
+
+7. full_trace 后处理默认关闭：
+   - 因为 pref 现在只跑 selected trace
+   - 避免拿 nopref 全量 trace 和 pref selected trace 混在一起做 full_trace 对比
+
+统计和聚合规则：
+
+1. SPEC06 / SPEC17 / Ligra / PARSEC / XSBench：
+   - 同一个 benchmark 下的多个 trace 作为同一个 workload
+   - workload 内部 trace 等权聚合
+
+2. GAP：
+   - 使用 /data2/zcq/champsim_traces_gap
+   - 按 bc / bfs / cc / pr / sssp / tc 聚合成六个 workload
+   - 每个 workload 内部 trace 等权聚合
+
+3. QMM：
+   - 按 qmm_srv / qmm_int / qmm_fp 聚合成三个 workload
+
+4. workload 内部：
+   - IPC 使用 gmean
+   - STLB MPKI 使用 trace-level MPKI 的 amean
+   - STLB miss rate 使用 trace-level miss rate 的 amean
+   - 各 miss-cause share 使用 trace-level share 的 amean
+
+5. 最终汇总：
+   - SPEC06 产生 gmean_spec06
+   - SPEC17 产生 gmean_spec17
+   - GAP 产生 gmean_gap
+   - Ligra 产生 gmean_ligra
+   - QMM 产生 gmean_qmm
+   - PARSEC 产生 gmean_parsec
+   - XSBench 产生 gmean_xsbench
+   - 全部 selected trace 产生 gmean_all
+   - dataset summary 按 DPC4-like 方式直接基于该 dataset 下所有 trace 计算
+   - gmean_all 同样直接基于所有 selected trace 计算
+   - IPC summary 使用 trace-level IPC 的 gmean
+   - MPKI、miss rate、miss cause share summary 使用 trace-level 指标的 amean
+
+主要输出目录：
+
+results/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/nopref-workload-sweep
+results/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/pref-workload-sweep
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/nopref-workload-sweep
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/pref-workload-sweep
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/data_process_for_compare
+
+生成的 bin：
+
+bin/tlb-nopref-1core
+bin/tlb-pref-1core
+
+
+============================================================
+常用命令
+============================================================
+
+查看当前配置和输出路径：
+
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh status
+
+
+完整流程，遍历 SPEC06 + SPEC17 + GAP + Ligra + QMM + PARSEC + XSBench：
+
+MAX_PARALLEL=15 N_WARM=20 N_SIM=50 \
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh all 15
+
+N_WARM=2 N_SIM=5 ./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh all 15
+
+
+小范围 smoke test，只跑 649.fotonik3d_s：
+
+TRACE_FILTER=649.fotonik3d_s N_WARM=2 N_SIM=5 MAX_PARALLEL=4 SKIP_EXISTING=0 \
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh all 4
+
+
+只构建两个 bin：
+
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh build-only
+
+
+只运行 workload，不做后处理：
+
+MAX_PARALLEL=15 N_WARM=20 N_SIM=50 \
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh run-only 15
+
+
+只跑 nopref：
+
+MAX_PARALLEL=15 N_WARM=20 N_SIM=50 \
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh run-nopref 15
+
+
+只跑 pref：
+需要先有 selected trace JSON；默认路径来自 nopref 后处理筛选结果。
+
+MAX_PARALLEL=15 N_WARM=20 N_SIM=50 \
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh run-pref 15
+
+
+只根据 nopref result 生成筛选 trace 的 JSON：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh select-json
+
+
+只做后处理和画图：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh backend
+
+
+full_trace 后处理入口现在会直接报错，避免误用：
+
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh full-backend
+
+
+backend-all 现在等价于 selected trace 后处理：
+
+SELECT_THRESHOLD=1.0 \
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh backend-all
+
+
+只做 IPC 对比：
+
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh compare
+
+
+清理当前实验的 csv_figure 输出：
+
+./launch_sim/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/run_tlb_select_compare.sh clean-csv
+
+
+============================================================
+常用环境变量
+============================================================
+
+MAX_PARALLEL：
+并行仿真数量，默认 4。
+
+N_WARM：
+warmup 指令数，单位是 million，默认 20。
+
+N_SIM：
+ROI 指令数，单位是 million，默认 50。
+
+SKIP_EXISTING：
+如果 result log 已存在且包含 [ROI Statistics] 是否跳过，默认 1。
+已有 log 但没有完整 [ROI Statistics] 时，会自动重跑。
+
+TRACE_FILTER：
+只跑某一类 trace，例如：
+
+TRACE_FILTER=649.fotonik3d_s
+TRACE_FILTER=pr.
+
+TRACE_DIRS：
+trace 搜索目录，默认：
+
+/data0/tzh/champsim_traces/SPEC06:/data0/tzh/champsim_traces/SPEC17:/data2/zcq/champsim_traces_gap:/data0/tzh/champsim_traces/Ligra:/data0/tzh/champsim_traces/QMM:/data0/tzh/champsim_traces/PARSEC:/data2/zcq/champsim_traces_xsbench
+
+SELECT_THRESHOLD：
+筛选 trace 的 STLB MPKI 阈值，默认 1.0。
+
+SELECT_TRACE_JSON：
+手动指定 selected trace JSON。默认使用：
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/data_process_for_compare/stlb_mpki_gt_1.0_selected_traces.json
+
+
+============================================================
+关键输出文件
+============================================================
+
+筛选 trace JSON：
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/data_process_for_compare/stlb_mpki_gt_1.0_selected_traces.json
+
+
+nopref trace-level 数据：
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/nopref-workload-sweep/nopref_trace_level.csv
+
+nopref workload-level 数据：
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/nopref-workload-sweep/nopref_workload_agg.csv
+
+nopref STLB miss cause 图：
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/nopref-workload-sweep/nopref_stlb_miss_causes.png
+
+
+pref trace-level 数据：
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/pref-workload-sweep/pref_trace_level.csv
+
+pref workload-level 数据：
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/pref-workload-sweep/pref_workload_agg.csv
+
+pref STLB miss cause 图：
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/pref-workload-sweep/pref_stlb_miss_causes.png
+
+
+IPC 对比：
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.csv
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/data_process_for_compare/pref_vs_nopref_ipc_compare.png
+
+STLB total miss rate 归一化对比：
+
+csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare/select_trace/data_process_for_compare/pref_vs_nopref_stlb_miss_rate_norm.png
+
+
+full_trace 结果：
+
+当前流程不再生成 full_trace 结果。

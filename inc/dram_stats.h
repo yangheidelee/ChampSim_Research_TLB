@@ -10,6 +10,17 @@ struct dram_stats {
   uint64_t dbus_count_congested = 0;
   uint64_t refresh_cycles = 0;
   unsigned WQ_ROW_BUFFER_HIT = 0, WQ_ROW_BUFFER_MISS = 0, RQ_ROW_BUFFER_HIT = 0, RQ_ROW_BUFFER_MISS = 0, WQ_FULL = 0;
+
+  uint64_t rq_read_data_demand = 0;
+  uint64_t rq_read_inst_demand = 0;
+  uint64_t rq_read_cache_inst_prefetch = 0;
+  uint64_t rq_read_cache_data_prefetch = 0;
+  uint64_t rq_read_stlb_data_demand = 0;
+  uint64_t rq_read_stlb_inst_demand = 0;
+  uint64_t rq_read_stlb_l1i_pref = 0;
+  uint64_t rq_read_stlb_l1d_pref = 0;
+  uint64_t rq_read_unclassified = 0;
+  uint64_t rq_read_total_observed = 0;
 };
 
 dram_stats operator-(dram_stats lhs, dram_stats rhs);

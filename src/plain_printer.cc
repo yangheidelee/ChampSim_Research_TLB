@@ -152,6 +152,113 @@ std::vector<std::string> format_stlb_miss_cause_block(const CACHE::stats_type& s
   return lines;
 }
 
+std::vector<std::string> format_dram_rq_read_traffic(const std::vector<DRAM_CHANNEL::stats_type>& dram_stats, uint64_t roi_instructions)
+{
+  std::vector<std::string> lines;
+
+  uint64_t data_demand_read = 0;
+  uint64_t inst_demand_read = 0;
+  uint64_t cache_inst_prefetch = 0;
+  uint64_t cache_data_prefetch = 0;
+  uint64_t stlb_data_demand = 0;
+  uint64_t stlb_inst_demand = 0;
+  uint64_t stlb_l1i_pref = 0;
+  uint64_t stlb_l1d_pref = 0;
+  uint64_t unclassified_read = 0;
+  uint64_t dram_rq_read_total_observed = 0;
+
+  for (const auto& stats : dram_stats) {
+    data_demand_read += stats.rq_read_data_demand;
+    inst_demand_read += stats.rq_read_inst_demand;
+    cache_inst_prefetch += stats.rq_read_cache_inst_prefetch;
+    cache_data_prefetch += stats.rq_read_cache_data_prefetch;
+    stlb_data_demand += stats.rq_read_stlb_data_demand;
+    stlb_inst_demand += stats.rq_read_stlb_inst_demand;
+    stlb_l1i_pref += stats.rq_read_stlb_l1i_pref;
+    stlb_l1d_pref += stats.rq_read_stlb_l1d_pref;
+    unclassified_read += stats.rq_read_unclassified;
+    dram_rq_read_total_observed += stats.rq_read_total_observed;
+  }
+
+  const auto total_classified_read = data_demand_read + inst_demand_read + cache_inst_prefetch + cache_data_prefetch + stlb_data_demand + stlb_inst_demand
+                                     + stlb_l1i_pref + stlb_l1d_pref;
+  const auto cache_demand = data_demand_read + inst_demand_read;
+  const auto cache_prefetch = cache_inst_prefetch + cache_data_prefetch;
+  const auto stlb_demand = stlb_data_demand + stlb_inst_demand;
+  const auto stlb_prefetch = stlb_l1i_pref + stlb_l1d_pref;
+  const auto total_read_with_other = total_classified_read + unclassified_read;
+  const auto classified_plus_unclassified_check = total_read_with_other;
+
+  auto append_count_share = [&lines, total_classified_read](std::string_view key, uint64_t count) {
+    lines.push_back(fmt::format("{}.count = {}", key, count));
+    lines.push_back(fmt::format("{}.share = {:.2f}%", key, 100.0 * ratio_or_zero(count, total_classified_read)));
+    lines.emplace_back("");
+  };
+
+  lines.emplace_back("");
+  lines.emplace_back("====== DRAM_RQ_TRAFFIC ========");
+  lines.emplace_back("DRAM_RQ_READ_TRAFFIC_BREAKDOWN:");
+  append_count_share("data_demand_read", data_demand_read);
+  append_count_share("inst_demand_read", inst_demand_read);
+  append_count_share("cache_inst_prefetch", cache_inst_prefetch);
+  append_count_share("cache_data_prefetch", cache_data_prefetch);
+  append_count_share("stlb_data_demand", stlb_data_demand);
+  append_count_share("stlb_inst_demand", stlb_inst_demand);
+  append_count_share("stlb_l1i_pref", stlb_l1i_pref);
+  append_count_share("stlb_l1d_pref", stlb_l1d_pref);
+
+  lines.emplace_back("DRAM_RQ_READ_TRAFFIC_SUMMARY:");
+  append_count_share("cache_demand", cache_demand);
+  append_count_share("cache_prefetch", cache_prefetch);
+  append_count_share("stlb_demand", stlb_demand);
+  append_count_share("stlb_prefetch", stlb_prefetch);
+
+  lines.emplace_back("DRAM_RQ_READ_TRAFFIC_DEBUG:");
+  lines.push_back(fmt::format("total_classified_read.count = {}", total_classified_read));
+  lines.push_back(fmt::format("unclassified_read.count = {}", unclassified_read));
+  lines.push_back(fmt::format("total_read_with_other.count = {}", total_read_with_other));
+  lines.emplace_back("");
+  lines.push_back(fmt::format("classified_plus_unclassified_check.count = {}", classified_plus_unclassified_check));
+  lines.push_back(fmt::format("dram_rq_read_total_observed.count = {}", dram_rq_read_total_observed));
+  lines.push_back(fmt::format("dram_rq_read_total_observed.per_1K_instructions = {:.6g}",
+                              ratio_or_zero(dram_rq_read_total_observed * 1000.0, roi_instructions)));
+
+  return lines;
+}
+
+std::vector<std::string> format_stlb_miss_ptw_dram_touch(const std::vector<PageTableWalker::stats_type>& ptw_stats)
+{
+  std::vector<std::string> lines;
+  uint64_t stlb_miss_total = 0;
+  uint64_t stlb_miss_touch_dram = 0;
+  uint64_t stlb_miss_no_dram_touch = 0;
+
+  for (const auto& stats : ptw_stats) {
+    stlb_miss_total += stats.stlb_miss_total;
+    stlb_miss_touch_dram += stats.stlb_miss_touch_dram;
+    stlb_miss_no_dram_touch += stats.stlb_miss_no_dram_touch;
+  }
+
+  const auto stlb_miss_touch_plus_no_touch = stlb_miss_touch_dram + stlb_miss_no_dram_touch;
+
+  lines.emplace_back("");
+  lines.emplace_back("STLB_MISS_PTW_DRAM_TOUCH_BREAKDOWN:");
+  lines.push_back(fmt::format("stlb_miss_total.count = {}", stlb_miss_total));
+  lines.emplace_back("");
+  lines.push_back(fmt::format("stlb_miss_touch_dram.count = {}", stlb_miss_touch_dram));
+  lines.push_back(fmt::format("stlb_miss_touch_dram.share = {:.2f}%", 100.0 * ratio_or_zero(stlb_miss_touch_dram, stlb_miss_total)));
+  lines.emplace_back("");
+  lines.push_back(fmt::format("stlb_miss_no_dram_touch.count = {}", stlb_miss_no_dram_touch));
+  lines.push_back(fmt::format("stlb_miss_no_dram_touch.share = {:.2f}%", 100.0 * ratio_or_zero(stlb_miss_no_dram_touch, stlb_miss_total)));
+
+  lines.emplace_back("");
+  lines.emplace_back("STLB_MISS_PTW_DRAM_TOUCH_DEBUG:");
+  lines.push_back(fmt::format("stlb_miss_touch_plus_no_touch.count = {}", stlb_miss_touch_plus_no_touch));
+  lines.push_back(fmt::format("stlb_miss_total_check.count = {}", stlb_miss_total));
+
+  return lines;
+}
+
 std::vector<std::string> format_cache_metric_block(const CACHE::stats_type& stats, std::size_t cpu, long long instrs)
 {
   std::vector<std::string> lines;
@@ -383,6 +490,16 @@ std::vector<std::string> format_extended_roi_stats(champsim::phase_stats& stats)
   lines.push_back(fmt::format("DRAM_total_WQ_full {}", total_wq_full));
   lines.push_back(fmt::format("DRAM_total_dbus_congested {}", total_congested));
   lines.push_back(fmt::format("DRAM_avg_congested_cycle {:.6g}", ratio_or_zero(total_congested_cycles, total_congested)));
+
+  const auto total_roi_instructions = std::accumulate(std::begin(stats.roi_cpu_stats), std::end(stats.roi_cpu_stats), uint64_t{0},
+                                                      [](uint64_t acc, const auto& cpu_stats) {
+                                                        return acc + static_cast<uint64_t>(cpu_stats.instrs());
+                                                      });
+  auto traffic_lines = format_dram_rq_read_traffic(stats.roi_dram_stats, total_roi_instructions);
+  std::move(std::begin(traffic_lines), std::end(traffic_lines), std::back_inserter(lines));
+
+  auto ptw_dram_touch_lines = format_stlb_miss_ptw_dram_touch(stats.roi_ptw_stats);
+  std::move(std::begin(ptw_dram_touch_lines), std::end(ptw_dram_touch_lines), std::back_inserter(lines));
 
   for (std::size_t cpu_idx = 0; cpu_idx < std::size(stats.roi_cpu_stats); ++cpu_idx) {
     auto found = cache_stats_by_name.find(fmt::format("cpu{}_STLB", cpu_idx));
