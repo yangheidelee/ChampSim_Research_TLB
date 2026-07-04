@@ -31,6 +31,7 @@
 #include "util/algorithm.h"
 #include "util/bits.h"
 #include "util/span.h"
+#include "vpn_pattern_tracker.h"
 
 namespace
 {
@@ -401,6 +402,9 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
 
   sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
   record_stlb_origin_miss(handle_pkt);
+  champsim::instrumentation::record_stlb_vpn_miss(NAME, warmup, current_time, clock_period, handle_pkt.ip, handle_pkt.v_address, handle_pkt.instr_id,
+                                                  handle_pkt.cpu, handle_pkt.type, handle_pkt.translation_source, handle_pkt.prefetch_from_this,
+                                                  handle_pkt.is_instr);
 
   return true;
 }
@@ -419,6 +423,9 @@ bool CACHE::handle_write(const tag_lookup_type& handle_pkt)
 
   sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
   record_stlb_origin_miss(handle_pkt);
+  champsim::instrumentation::record_stlb_vpn_miss(NAME, warmup, current_time, clock_period, handle_pkt.ip, handle_pkt.v_address, handle_pkt.instr_id,
+                                                  handle_pkt.cpu, handle_pkt.type, handle_pkt.translation_source, handle_pkt.prefetch_from_this,
+                                                  handle_pkt.is_instr);
 
   return true;
 }
@@ -543,6 +550,14 @@ long CACHE::operate()
   auto [tag_check_ready_begin, tag_check_ready_end] =
       champsim::get_span_p(std::begin(inflight_tag_check), std::end(inflight_tag_check), tag_check_bw,
                            [is_ready, is_translated](const auto& pkt) { return is_ready(pkt) && is_translated(pkt); });
+  for (auto it = tag_check_ready_begin; it != tag_check_ready_end; ++it) {
+    champsim::instrumentation::record_l1d_vpn_access(NAME, warmup, current_time, clock_period, it->ip, it->v_address, it->instr_id, it->cpu, it->type,
+                                                     it->prefetch_from_this, it->is_instr);
+    champsim::instrumentation::record_dtlb_vpn_access(NAME, warmup, current_time, clock_period, it->ip, it->v_address, it->instr_id, it->cpu, it->type,
+                                                      it->translation_source, it->prefetch_from_this, it->is_instr);
+    champsim::instrumentation::record_stlb_vpn_access(NAME, warmup, current_time, clock_period, it->ip, it->v_address, it->instr_id, it->cpu, it->type,
+                                                      it->translation_source, it->prefetch_from_this, it->is_instr);
+  }
   auto hits_end = std::stable_partition(tag_check_ready_begin, tag_check_ready_end, [this](const auto& pkt) { return this->try_hit(pkt); });
   auto finish_tag_check_end = std::stable_partition(hits_end, tag_check_ready_end, do_handle_miss);
   tag_check_bw.consume(std::distance(tag_check_ready_begin, finish_tag_check_end));
