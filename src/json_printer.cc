@@ -51,6 +51,18 @@ void to_json(nlohmann::json& j, const CACHE::stats_type& stats)
   statsmap.emplace("prefetch issued", stats.pf_issued);
   statsmap.emplace("useful prefetch", stats.pf_useful);
   statsmap.emplace("useless prefetch", stats.pf_useless);
+  statsmap.emplace("vBerti prefetch requested", stats.vberti_prefetch_requested);
+  statsmap.emplace("vBerti cross-page requested", stats.vberti_cross_page_requested);
+  statsmap.emplace("vBerti prefetch issued", stats.vberti_prefetch_issued);
+  statsmap.emplace("vBerti cross-page issued", stats.vberti_cross_page_issued);
+  statsmap.emplace("TLB cross-page prefetch issued", stats.tlb_cross_prefetch_issued);
+  statsmap.emplace("TLB cross-page prefetch useful", stats.tlb_cross_prefetch_useful);
+  statsmap.emplace("TLB cross-page prefetch useless", stats.tlb_cross_prefetch_useless);
+  statsmap.emplace("TLB cross-page prefetch late", stats.tlb_cross_prefetch_late);
+  statsmap.emplace("TLB-system cross-page prefetch issued", stats.tlb_system_cross_prefetch_issued);
+  statsmap.emplace("TLB-system cross-page prefetch useful", stats.tlb_system_cross_prefetch_useful);
+  statsmap.emplace("TLB-system cross-page prefetch useless", stats.tlb_system_cross_prefetch_useless);
+  statsmap.emplace("TLB-system cross-page prefetch late", stats.tlb_system_cross_prefetch_late);
 
   uint64_t total_downstream_demands = stats.mshr_return.total();
   for (std::size_t cpu = 0; cpu < NUM_CPUS; ++cpu)

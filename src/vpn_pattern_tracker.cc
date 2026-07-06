@@ -43,6 +43,12 @@ bool is_dtlb_name(std::string_view cache_name)
   return cache_name.size() >= suffix.size() && cache_name.compare(cache_name.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
+bool is_l1d_prefetch_origin(translation_origin origin)
+{
+  return origin == translation_origin::L1D_PREFETCH || origin == translation_origin::L1D_PREFETCH_SAME_PAGE
+         || origin == translation_origin::L1D_PREFETCH_CROSS_PAGE;
+}
+
 class vpn_trace_writer
 {
 public:
@@ -197,7 +203,7 @@ void champsim::instrumentation::record_stlb_vpn_access(std::string_view cache_na
   const bool dump_full = stlb_writer().enabled();
   const bool dump_demand =
       (origin == translation_origin::DEMAND_DATA || origin == translation_origin::DEMAND_INSTRUCTION) && stlb_demand_writer().enabled();
-  const bool dump_l1d_prefetch = origin == translation_origin::L1D_PREFETCH && stlb_l1d_prefetch_writer().enabled();
+  const bool dump_l1d_prefetch = is_l1d_prefetch_origin(origin) && stlb_l1d_prefetch_writer().enabled();
   if (!dump_full && !dump_demand && !dump_l1d_prefetch)
     return;
 
@@ -226,7 +232,7 @@ void champsim::instrumentation::record_dtlb_vpn_access(std::string_view cache_na
 
   const bool dump_demand =
       (origin == translation_origin::DEMAND_DATA || origin == translation_origin::DEMAND_INSTRUCTION) && dtlb_demand_writer().enabled();
-  const bool dump_l1d_prefetch = origin == translation_origin::L1D_PREFETCH && dtlb_l1d_prefetch_writer().enabled();
+  const bool dump_l1d_prefetch = is_l1d_prefetch_origin(origin) && dtlb_l1d_prefetch_writer().enabled();
   if (!dump_demand && !dump_l1d_prefetch)
     return;
 

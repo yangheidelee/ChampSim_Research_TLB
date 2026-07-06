@@ -1038,7 +1038,10 @@ uint32_t vberti::prefetcher_cache_operate(champsim::address address, champsim::a
     if (i.rpl == BERTI_R) return metadata_in;
     if (p_addr == 0) continue;
 
-    if ((p_addr >> LOG2_PAGE_SIZE) != (addr >> LOG2_PAGE_SIZE))
+    const bool is_cross_page = (p_addr >> LOG2_PAGE_SIZE) != (addr >> LOG2_PAGE_SIZE);
+    uint32_t pf_metadata = make_l1d_pref_meta(metadata_in, is_cross_page);
+
+    if (is_cross_page)
     {
       cross_page++;
 # ifdef NO_CROSS_PAGE
@@ -1046,6 +1049,8 @@ uint32_t vberti::prefetcher_cache_operate(champsim::address address, champsim::a
       continue;
 # endif
     } else no_cross_page++;
+
+    intern_->record_l1d_prefetch_candidate(pf_metadata);
 
     float mshr_load = intern_->get_mshr_occupancy_ratio() * 100;
 
@@ -1055,7 +1060,7 @@ uint32_t vberti::prefetcher_cache_operate(champsim::address address, champsim::a
     if (fill_this_level) pf_to_l1++;
     else pf_to_l2++;
 
-    if (prefetch_line(champsim::address{p_addr}, fill_this_level, metadata_in))
+    if (prefetch_line(champsim::address{p_addr}, fill_this_level, pf_metadata))
     {
       ++average_issued;
       if (first_issue)

@@ -17,6 +17,7 @@
 #ifndef BLOCK_H
 #define BLOCK_H
 
+#include "access_type.h"
 #include "champsim.h"
 
 namespace champsim
@@ -31,6 +32,14 @@ struct cache_block {
   champsim::address data{};
 
   uint32_t pf_metadata = 0;
+  uint32_t cpu = 0;
+  uint8_t asid[2] = {0xff, 0xff};
+
+  // Stats-only TLB prefetch provenance. These fields do not participate in
+  // lookup, replacement, or functional correctness.
+  translation_origin translation_source = translation_origin::OTHER;
+  bool tlb_cross_prefetch = false;
+  bool tlb_cross_prefetch_used = false;
 };
 } // namespace champsim
 

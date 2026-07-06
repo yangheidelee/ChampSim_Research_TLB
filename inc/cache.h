@@ -30,9 +30,11 @@
 #include <deque>
 #include <iterator> // for size
 #include <limits>   // for numeric_limits
+#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <typeinfo>
 #include <vector>
@@ -110,6 +112,7 @@ public:
     uint32_t cpu;
 
     access_type type;
+    translation_origin translation_source = translation_origin::OTHER;
     bool prefetch_from_this;
     bool is_instr = false;
 
@@ -126,6 +129,18 @@ public:
   };
 
 private:
+  struct tlb_prefetch_key {
+    uint32_t cpu = 0;
+    uint64_t vpn = 0;
+    uint8_t asid0 = std::numeric_limits<uint8_t>::max();
+    uint8_t asid1 = std::numeric_limits<uint8_t>::max();
+
+    bool operator<(const tlb_prefetch_key& other) const
+    {
+      return std::tie(cpu, vpn, asid0, asid1) < std::tie(other.cpu, other.vpn, other.asid0, other.asid1);
+    }
+  };
+
   bool try_hit(const tag_lookup_type& handle_pkt);
   bool handle_fill(const mshr_type& fill_mshr);
   bool handle_miss(const tag_lookup_type& handle_pkt);
@@ -135,9 +150,17 @@ private:
 
   void issue_translation(tag_lookup_type& q_entry) const;
   [[nodiscard]] translation_origin classify_translation_origin(const tag_lookup_type& q_entry) const;
+  [[nodiscard]] bool is_dtlb() const;
   [[nodiscard]] bool is_stlb() const;
-  void record_stlb_origin_hit(const tag_lookup_type& handle_pkt);
-  void record_stlb_origin_miss(const tag_lookup_type& handle_pkt);
+  [[nodiscard]] bool is_tlb() const;
+  [[nodiscard]] tlb_prefetch_key make_tlb_prefetch_key(const tag_lookup_type& pkt) const;
+  void record_tlb_origin_hit(const tag_lookup_type& handle_pkt);
+  void record_tlb_origin_miss(const tag_lookup_type& handle_pkt);
+  bool record_tlb_cross_prefetch_fill(const mshr_type& fill_mshr);
+  void record_tlb_cross_prefetch_eviction(const champsim::cache_block& victim, uint32_t cpu);
+  void record_tlb_cross_prefetch_hit(const tag_lookup_type& handle_pkt, champsim::cache_block& way);
+  void record_tlb_cross_prefetch_miss(const tag_lookup_type& handle_pkt, bool new_mshr);
+  void finalize_tlb_cross_prefetch_stats();
 
 public:
   using BLOCK = champsim::cache_block;
@@ -171,6 +194,7 @@ private:
   std::deque<tag_lookup_type> internal_PQ{};
   std::deque<tag_lookup_type> inflight_tag_check{};
   std::deque<tag_lookup_type> translation_stash{};
+  std::map<tlb_prefetch_key, uint64_t> tlb_cross_prefetch_pending{};
 
 public:
   std::vector<channel_type*> upper_levels;
@@ -233,6 +257,7 @@ public:
   [[deprecated("This function should not be used to access the blocks directly.")]] [[nodiscard]] uint64_t get_way(uint64_t address, uint64_t set) const;
 
   long invalidate_entry(champsim::address inval_addr);
+  void record_l1d_prefetch_candidate(uint32_t prefetch_metadata);
   bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata);
   [[nodiscard]] std::vector<std::string> prefetcher_names() const;
   [[nodiscard]] std::vector<std::string> replacement_names() const;

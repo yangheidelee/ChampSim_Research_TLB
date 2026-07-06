@@ -314,3 +314,12 @@ L1D prefetcher
 -> miss 则进 PTW
 
 总结：在当前这个 ChampSim 工程里，L1D prefetch 的跨页翻译进入 TLB 系统以后，基本就是像一个正常 demand translation 一样处理，不会因为它是 prefetch 就特殊 drop、特殊低优先级、或者走单独的 prefetch translation queue。
+
+
+
+
+
+# 预取，在PQ里面后来的prefetch会merge到PQ中已经有entry吗？
+本级 prefetcher 发出的 prefetch 进入 internal_PQ 时不会 merge。
+发到下一级 cache 的 channel PQ 后，后来的 prefetch 可以和 PQ 中已有同地址 entry merge。
+如果已经不是 PQ，而是 miss 后已经分配了 MSHR，那么后续同地址请求会走 MSHR merge，不是 PQ merge。

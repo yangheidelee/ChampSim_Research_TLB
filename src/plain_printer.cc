@@ -114,15 +114,37 @@ auto origin_counter_value(const Counter& counter, translation_origin origin, std
   return counter.value_or(std::pair{origin, cpu}, typename Counter::value_type{});
 }
 
+template <typename Counter>
+uint64_t origin_access_count(const Counter& hits, const Counter& misses, translation_origin origin, std::size_t cpu)
+{
+  return origin_counter_value(hits, origin, cpu) + origin_counter_value(misses, origin, cpu);
+}
+
+template <typename Counter>
+uint64_t demand_origin_count(const Counter& counter, std::size_t cpu)
+{
+  return origin_counter_value(counter, translation_origin::DEMAND_DATA, cpu) + origin_counter_value(counter, translation_origin::DEMAND_INSTRUCTION, cpu);
+}
+
+template <typename Counter>
+uint64_t l1d_prefetch_origin_count(const Counter& counter, std::size_t cpu)
+{
+  return origin_counter_value(counter, translation_origin::L1D_PREFETCH, cpu)
+         + origin_counter_value(counter, translation_origin::L1D_PREFETCH_SAME_PAGE, cpu)
+         + origin_counter_value(counter, translation_origin::L1D_PREFETCH_CROSS_PAGE, cpu);
+}
+
 std::vector<std::string> format_stlb_miss_cause_block(const CACHE::stats_type& stats, std::size_t cpu)
 {
   std::vector<std::string> lines;
   lines.emplace_back("");
   lines.emplace_back("======STLB miss causes ========");
 
-  const std::array detailed_origins{translation_origin::DEMAND_DATA, translation_origin::DEMAND_INSTRUCTION, translation_origin::L1D_PREFETCH,
-                                    translation_origin::L1I_PREFETCH, translation_origin::OTHER};
-  const std::array detailed_names{"Demand_Data", "Demand_Instruction", "L1D_Prefetch", "L1I_Prefetch", "Other"};
+  const std::array detailed_origins{translation_origin::DEMAND_DATA,      translation_origin::DEMAND_INSTRUCTION,       translation_origin::L1D_PREFETCH,
+                                    translation_origin::L1D_PREFETCH_SAME_PAGE, translation_origin::L1D_PREFETCH_CROSS_PAGE, translation_origin::L1I_PREFETCH,
+                                    translation_origin::OTHER};
+  const std::array detailed_names{"Demand_Data", "Demand_Instruction", "L1D_Prefetch", "L1D_Prefetch_Same_Page",
+                                  "L1D_Prefetch_Cross_Page", "L1I_Prefetch", "Other"};
 
   const auto label = cache_label(cpu, stats.name);
   const auto stlb_total_access = access_count(stats, access_type::LOAD, cpu) + access_count(stats, access_type::RFO, cpu)
@@ -131,14 +153,14 @@ std::vector<std::string> format_stlb_miss_cause_block(const CACHE::stats_type& s
 
   for (std::size_t idx = 0; idx < std::size(detailed_origins); ++idx) {
     const auto origin = detailed_origins.at(idx);
-    const auto misses = origin_counter_value(stats.stlb_origin_misses, origin, cpu);
+    const auto misses = origin == translation_origin::L1D_PREFETCH ? l1d_prefetch_origin_count(stats.stlb_origin_misses, cpu)
+                                                                   : origin_counter_value(stats.stlb_origin_misses, origin, cpu);
     lines.push_back(fmt::format("{}_cause_{}_miss {}", label, detailed_names.at(idx), misses));
     lines.push_back(fmt::format("{}_cause_{}_miss_rate {:.6g}", label, detailed_names.at(idx), ratio_or_zero(misses, stlb_total_access)));
   }
 
-  const auto demand_misses = origin_counter_value(stats.stlb_origin_misses, translation_origin::DEMAND_DATA, cpu)
-                             + origin_counter_value(stats.stlb_origin_misses, translation_origin::DEMAND_INSTRUCTION, cpu);
-  const auto l1d_prefetch_misses = origin_counter_value(stats.stlb_origin_misses, translation_origin::L1D_PREFETCH, cpu);
+  const auto demand_misses = demand_origin_count(stats.stlb_origin_misses, cpu);
+  const auto l1d_prefetch_misses = l1d_prefetch_origin_count(stats.stlb_origin_misses, cpu);
   const auto other_misses = origin_counter_value(stats.stlb_origin_misses, translation_origin::L1I_PREFETCH, cpu)
                             + origin_counter_value(stats.stlb_origin_misses, translation_origin::OTHER, cpu);
 
@@ -308,8 +330,247 @@ std::vector<std::string> format_cache_metric_block(const CACHE::stats_type& stat
   lines.push_back(fmt::format("{}_prefetch_useful {}", label, stats.pf_useful));
   lines.push_back(fmt::format("{}_prefetch_useless {}", label, stats.pf_useless));
   lines.push_back(fmt::format("{}_prefetch_late {}", label, stats.pf_late));
+  lines.push_back(fmt::format("{}_prefetch_fill {}", label, stats.pf_fill));
   lines.push_back(fmt::format("{}_prefetch_accuracy {:.6g}", label, ratio_or_zero(stats.pf_useful, stats.pf_issued)));
   lines.push_back(fmt::format("{}_prefetch_coverage {:.6g}", label, ratio_or_zero(stats.pf_useful, stats.pf_useful + demand_miss)));
+
+  return lines;
+}
+
+struct tlb_origin_counts {
+  uint64_t demand_access = 0;
+  uint64_t demand_hit = 0;
+  uint64_t demand_miss = 0;
+  uint64_t demand_mshr_merge = 0;
+  uint64_t demand_fill = 0;
+  uint64_t same_access = 0;
+  uint64_t same_hit = 0;
+  uint64_t same_miss = 0;
+  uint64_t same_mshr_merge = 0;
+  uint64_t same_fill = 0;
+  uint64_t cross_access = 0;
+  uint64_t cross_hit = 0;
+  uint64_t cross_miss = 0;
+  uint64_t cross_mshr_merge = 0;
+  uint64_t cross_fill = 0;
+};
+
+tlb_origin_counts get_dtlb_origin_counts(const CACHE::stats_type& stats, std::size_t cpu)
+{
+  const auto demand_hit = demand_origin_count(stats.dtlb_origin_hits, cpu);
+  const auto demand_miss = demand_origin_count(stats.dtlb_origin_misses, cpu);
+  const auto same_hit = static_cast<uint64_t>(origin_counter_value(stats.dtlb_origin_hits, translation_origin::L1D_PREFETCH_SAME_PAGE, cpu));
+  const auto same_miss = static_cast<uint64_t>(origin_counter_value(stats.dtlb_origin_misses, translation_origin::L1D_PREFETCH_SAME_PAGE, cpu));
+  const auto cross_hit = static_cast<uint64_t>(origin_counter_value(stats.dtlb_origin_hits, translation_origin::L1D_PREFETCH_CROSS_PAGE, cpu));
+  const auto cross_miss = static_cast<uint64_t>(origin_counter_value(stats.dtlb_origin_misses, translation_origin::L1D_PREFETCH_CROSS_PAGE, cpu));
+  const auto same_merge =
+      static_cast<uint64_t>(origin_counter_value(stats.tlb_origin_mshr_merge, translation_origin::L1D_PREFETCH_SAME_PAGE, cpu));
+  const auto cross_merge =
+      static_cast<uint64_t>(origin_counter_value(stats.tlb_origin_mshr_merge, translation_origin::L1D_PREFETCH_CROSS_PAGE, cpu));
+
+  return {
+      demand_hit + demand_miss,
+      demand_hit,
+      demand_miss,
+      demand_origin_count(stats.tlb_origin_mshr_merge, cpu),
+      demand_origin_count(stats.tlb_origin_fills, cpu),
+      same_hit + same_miss,
+      same_hit,
+      same_miss,
+      same_merge,
+      static_cast<uint64_t>(origin_counter_value(stats.tlb_origin_fills, translation_origin::L1D_PREFETCH_SAME_PAGE, cpu)),
+      cross_hit + cross_miss,
+      cross_hit,
+      cross_miss,
+      cross_merge,
+      static_cast<uint64_t>(origin_counter_value(stats.tlb_origin_fills, translation_origin::L1D_PREFETCH_CROSS_PAGE, cpu)),
+  };
+}
+
+tlb_origin_counts get_stlb_origin_counts(const CACHE::stats_type& stats, std::size_t cpu)
+{
+  const auto demand_hit = demand_origin_count(stats.stlb_origin_hits, cpu);
+  const auto demand_miss = demand_origin_count(stats.stlb_origin_misses, cpu);
+  const auto same_hit = static_cast<uint64_t>(origin_counter_value(stats.stlb_origin_hits, translation_origin::L1D_PREFETCH_SAME_PAGE, cpu));
+  const auto same_miss = static_cast<uint64_t>(origin_counter_value(stats.stlb_origin_misses, translation_origin::L1D_PREFETCH_SAME_PAGE, cpu));
+  const auto cross_hit = static_cast<uint64_t>(origin_counter_value(stats.stlb_origin_hits, translation_origin::L1D_PREFETCH_CROSS_PAGE, cpu));
+  const auto cross_miss = static_cast<uint64_t>(origin_counter_value(stats.stlb_origin_misses, translation_origin::L1D_PREFETCH_CROSS_PAGE, cpu));
+  const auto same_merge =
+      static_cast<uint64_t>(origin_counter_value(stats.tlb_origin_mshr_merge, translation_origin::L1D_PREFETCH_SAME_PAGE, cpu));
+  const auto cross_merge =
+      static_cast<uint64_t>(origin_counter_value(stats.tlb_origin_mshr_merge, translation_origin::L1D_PREFETCH_CROSS_PAGE, cpu));
+
+  return {
+      demand_hit + demand_miss,
+      demand_hit,
+      demand_miss,
+      demand_origin_count(stats.tlb_origin_mshr_merge, cpu),
+      demand_origin_count(stats.tlb_origin_fills, cpu),
+      same_hit + same_miss,
+      same_hit,
+      same_miss,
+      same_merge,
+      static_cast<uint64_t>(origin_counter_value(stats.tlb_origin_fills, translation_origin::L1D_PREFETCH_SAME_PAGE, cpu)),
+      cross_hit + cross_miss,
+      cross_hit,
+      cross_miss,
+      cross_merge,
+      static_cast<uint64_t>(origin_counter_value(stats.tlb_origin_fills, translation_origin::L1D_PREFETCH_CROSS_PAGE, cpu)),
+  };
+}
+
+void append_tlb_quality_metrics(std::vector<std::string>& lines, std::string_view label, const tlb_origin_counts& counts, uint64_t instrs, uint64_t issued,
+                                uint64_t useful, uint64_t useless, uint64_t late)
+{
+  lines.push_back(fmt::format("{}_demand_miss_rate {:.6g}", label, ratio_or_zero(counts.demand_miss, counts.demand_access)));
+  lines.push_back(fmt::format("{}_demand_mpki {:.6g}", label, ratio_or_zero(counts.demand_miss * 1000.0, instrs)));
+  lines.push_back(fmt::format("{}_same_page_prefetch_miss_rate {:.6g}", label, ratio_or_zero(counts.same_miss, counts.same_access)));
+  lines.push_back(fmt::format("{}_same_page_prefetch_mpki {:.6g}", label, ratio_or_zero(counts.same_miss * 1000.0, instrs)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_miss_rate {:.6g}", label, ratio_or_zero(counts.cross_miss, counts.cross_access)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_mpki {:.6g}", label, ratio_or_zero(counts.cross_miss * 1000.0, instrs)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_issued {}", label, issued));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_lookups {}", label, counts.cross_access));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_useful {}", label, useful));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_useless {}", label, useless));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_late {}", label, late));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_accuracy {:.6g}", label, ratio_or_zero(useful, issued)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_coverage {:.6g}", label, ratio_or_zero(useful, useful + counts.demand_miss)));
+}
+
+void append_tlb_prefetch_quality_metrics(std::vector<std::string>& lines, std::string_view label, const tlb_origin_counts& counts, uint64_t instrs,
+                                         uint64_t issued, uint64_t useful, uint64_t useless, uint64_t late)
+{
+  lines.push_back(fmt::format("{}_same_page_prefetch_miss_rate {:.6g}", label, ratio_or_zero(counts.same_miss, counts.same_access)));
+  lines.push_back(fmt::format("{}_same_page_prefetch_mpki {:.6g}", label, ratio_or_zero(counts.same_miss * 1000.0, instrs)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_miss_rate {:.6g}", label, ratio_or_zero(counts.cross_miss, counts.cross_access)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_mpki {:.6g}", label, ratio_or_zero(counts.cross_miss * 1000.0, instrs)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_issued {}", label, issued));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_lookups {}", label, counts.cross_access));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_useful {}", label, useful));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_useless {}", label, useless));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_late {}", label, late));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_accuracy {:.6g}", label, ratio_or_zero(useful, issued)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_coverage {:.6g}", label, ratio_or_zero(useful, useful + counts.demand_miss)));
+}
+
+void append_tlb_vberti_detail_metrics(std::vector<std::string>& lines, std::string_view level_name, std::string_view label,
+                                      const tlb_origin_counts& counts, uint64_t instrs, uint64_t issued, uint64_t useful, uint64_t useless,
+                                      uint64_t late)
+{
+  const auto vberti_prefetch_access = counts.same_access + counts.cross_access;
+  const auto vberti_prefetch_hit = counts.same_hit + counts.cross_hit;
+  const auto vberti_prefetch_miss = counts.same_miss + counts.cross_miss;
+  const auto vberti_prefetch_mshr_merge = counts.same_mshr_merge + counts.cross_mshr_merge;
+  const auto vberti_prefetch_fill = counts.same_fill + counts.cross_fill;
+
+  lines.push_back(fmt::format("{}_demand_access {}", label, counts.demand_access));
+  lines.push_back(fmt::format("{}_demand_hit {}", label, counts.demand_hit));
+  lines.push_back(fmt::format("{}_demand_miss {}", label, counts.demand_miss));
+  lines.push_back(fmt::format("{}_demand_mshr_merge {}", label, counts.demand_mshr_merge));
+  lines.push_back(fmt::format("{}_demand_fill {}", label, counts.demand_fill));
+  lines.push_back(fmt::format("{}_demand_miss_rate {:.6g}", label, ratio_or_zero(counts.demand_miss, counts.demand_access)));
+  lines.push_back(fmt::format("{}_demand_mpki {:.6g}", label, ratio_or_zero(counts.demand_miss * 1000.0, instrs)));
+  lines.push_back(fmt::format("{}_vberti_prefetch_access {}", label, vberti_prefetch_access));
+  lines.push_back(fmt::format("{}_vberti_prefetch_hit {}", label, vberti_prefetch_hit));
+  lines.push_back(fmt::format("{}_vberti_prefetch_miss {}", label, vberti_prefetch_miss));
+  lines.push_back(fmt::format("{}_vberti_prefetch_mshr_merge {}", label, vberti_prefetch_mshr_merge));
+  lines.push_back(fmt::format("{}_vberti_prefetch_fill {}", label, vberti_prefetch_fill));
+  lines.push_back(fmt::format("{}_vberti_prefetch_miss_rate {:.6g}", label, ratio_or_zero(vberti_prefetch_miss, vberti_prefetch_access)));
+  lines.push_back(fmt::format("{}_vberti_prefetch_mpki {:.6g}", label, ratio_or_zero(vberti_prefetch_miss * 1000.0, instrs)));
+
+  lines.emplace_back("");
+  lines.push_back(fmt::format("=== {}_vBerti Same/Cross-page Prefetch Stats ===", level_name));
+  lines.push_back(fmt::format("{}_vberti_same_page_prefetch {}", label, counts.same_access));
+  lines.push_back(fmt::format("{}_vberti_same_page_prefetch_hit {}", label, counts.same_hit));
+  lines.push_back(fmt::format("{}_vberti_same_page_prefetch_miss {}", label, counts.same_miss));
+  lines.push_back(fmt::format("{}_vberti_same_page_prefetch_mshr_merge {}", label, counts.same_mshr_merge));
+  lines.push_back(fmt::format("{}_vberti_same_page_prefetch_fill {}", label, counts.same_fill));
+  lines.push_back(fmt::format("{}_vberti_same_page_prefetch_miss_rate {:.6g}", label, ratio_or_zero(counts.same_miss, counts.same_access)));
+  lines.push_back(fmt::format("{}_vberti_same_page_prefetch_mpki {:.6g}", label, ratio_or_zero(counts.same_miss * 1000.0, instrs)));
+  lines.push_back(fmt::format("{}_vberti_cross_page_prefetch {}", label, counts.cross_access));
+  lines.push_back(fmt::format("{}_vberti_cross_page_prefetch_hit {}", label, counts.cross_hit));
+  lines.push_back(fmt::format("{}_vberti_cross_page_prefetch_miss {}", label, counts.cross_miss));
+  lines.push_back(fmt::format("{}_vberti_cross_page_prefetch_mshr_merge {}", label, counts.cross_mshr_merge));
+  lines.push_back(fmt::format("{}_vberti_cross_page_prefetch_fill {}", label, counts.cross_fill));
+  lines.push_back(fmt::format("{}_vberti_cross_page_prefetch_miss_rate {:.6g}", label, ratio_or_zero(counts.cross_miss, counts.cross_access)));
+  lines.push_back(fmt::format("{}_vberti_cross_page_prefetch_mpki {:.6g}", label, ratio_or_zero(counts.cross_miss * 1000.0, instrs)));
+  append_tlb_prefetch_quality_metrics(lines, label, counts, instrs, issued, useful, useless, late);
+}
+
+std::vector<std::string> format_vberti_tlb_cross_page_flow_stats(const std::map<std::string, CACHE::stats_type>& cache_stats_by_name,
+                                                                 const std::vector<O3_CPU::stats_type>& cpu_stats)
+{
+  std::vector<std::string> lines;
+  lines.emplace_back("");
+  lines.emplace_back("========== vBerti-TLB Cross-page Flow Stats ==========");
+
+  for (std::size_t cpu_idx = 0; cpu_idx < std::size(cpu_stats); ++cpu_idx) {
+    const auto instrs = static_cast<uint64_t>(cpu_stats.at(cpu_idx).instrs());
+    const auto l1d = cache_stats_by_name.find(fmt::format("cpu{}_L1D", cpu_idx));
+    const auto dtlb = cache_stats_by_name.find(fmt::format("cpu{}_DTLB", cpu_idx));
+    const auto stlb = cache_stats_by_name.find(fmt::format("cpu{}_STLB", cpu_idx));
+    if (l1d == std::end(cache_stats_by_name) || dtlb == std::end(cache_stats_by_name) || stlb == std::end(cache_stats_by_name))
+      continue;
+
+    const auto requested = l1d->second.vberti_prefetch_requested;
+    const auto cross_requested = l1d->second.vberti_cross_page_requested;
+    const auto issued = l1d->second.vberti_prefetch_issued;
+    const auto cross_issued = l1d->second.vberti_cross_page_issued;
+    const auto dropped = requested > issued ? requested - issued : 0;
+    const auto cross_dropped = cross_requested > cross_issued ? cross_requested - cross_issued : 0;
+    const auto same_requested = requested > cross_requested ? requested - cross_requested : 0;
+
+    lines.emplace_back("");
+    lines.push_back(fmt::format("Core_{}_vBerti_Requested {}", cpu_idx, requested));
+    lines.push_back(fmt::format("Core_{}_vBerti_Cross_page_prefetch_in_Requested {}", cpu_idx, cross_requested));
+    lines.push_back(fmt::format("Core_{}_vBerti_Same_page_prefetch_in_Requested {}", cpu_idx, same_requested));
+    lines.push_back(fmt::format("Core_{}_vBerti_Cross_page_prefetch_of_Requested {:.6g}", cpu_idx, ratio_or_zero(cross_requested, requested)));
+    lines.push_back(fmt::format("Core_{}_vBerti_Issued {}", cpu_idx, issued));
+    lines.push_back(fmt::format("Core_{}_vBerti_PQ_Drop_Rate {:.6g}", cpu_idx, ratio_or_zero(dropped, requested)));
+    lines.push_back(fmt::format("Core_{}_vBerti_InPQ_Cross_page_prefetch_of_Requested {:.6g}", cpu_idx, ratio_or_zero(cross_issued, requested)));
+    lines.push_back(fmt::format("Core_{}_vBerti_Cross_page_PQ_Drop_rate {:.6g}", cpu_idx, ratio_or_zero(cross_dropped, cross_requested)));
+    lines.push_back(fmt::format("Core_{}_vBerti_Cross_page_prefetch_of_Issued {:.6g}", cpu_idx, ratio_or_zero(cross_issued, issued)));
+
+    const auto dtlb_counts = get_dtlb_origin_counts(dtlb->second, cpu_idx);
+    const auto stlb_counts = get_stlb_origin_counts(stlb->second, cpu_idx);
+    const tlb_origin_counts system_counts{
+        dtlb_counts.demand_access,
+        0,
+        stlb_counts.demand_miss,
+        0,
+        0,
+        dtlb_counts.same_access,
+        0,
+        stlb_counts.same_miss,
+        0,
+        0,
+        dtlb_counts.cross_access,
+        0,
+        stlb_counts.cross_miss,
+        0,
+        0,
+    };
+
+    lines.emplace_back("");
+    lines.emplace_back("========= DTLB_vBerti Prefetch Stats =========");
+    append_tlb_vberti_detail_metrics(lines, "DTLB", fmt::format("Core_{}_DTLB", cpu_idx), dtlb_counts, instrs,
+                                     dtlb->second.tlb_cross_prefetch_issued, dtlb->second.tlb_cross_prefetch_useful,
+                                     dtlb->second.tlb_cross_prefetch_useless, dtlb->second.tlb_cross_prefetch_late);
+
+    lines.emplace_back("");
+    lines.emplace_back("========= STLB_vBerti Prefetch Stats =========");
+    append_tlb_vberti_detail_metrics(lines, "STLB", fmt::format("Core_{}_STLB", cpu_idx), stlb_counts, instrs,
+                                     stlb->second.tlb_cross_prefetch_issued, stlb->second.tlb_cross_prefetch_useful,
+                                     stlb->second.tlb_cross_prefetch_useless, stlb->second.tlb_cross_prefetch_late);
+
+    const auto system_issued = dtlb->second.tlb_system_cross_prefetch_issued + stlb->second.tlb_system_cross_prefetch_issued;
+    const auto system_useful = dtlb->second.tlb_system_cross_prefetch_useful + stlb->second.tlb_system_cross_prefetch_useful;
+    const auto system_useless = dtlb->second.tlb_system_cross_prefetch_useless + stlb->second.tlb_system_cross_prefetch_useless;
+    const auto system_late = dtlb->second.tlb_system_cross_prefetch_late + stlb->second.tlb_system_cross_prefetch_late;
+    lines.emplace_back("");
+    append_tlb_quality_metrics(lines, fmt::format("Core_{}_TLB", cpu_idx), system_counts, instrs, system_issued, system_useful, system_useless,
+                               system_late);
+  }
 
   return lines;
 }
@@ -508,6 +769,9 @@ std::vector<std::string> format_extended_roi_stats(champsim::phase_stats& stats)
       std::move(std::begin(sublines), std::end(sublines), std::back_inserter(lines));
     }
   }
+
+  auto vberti_tlb_lines = format_vberti_tlb_cross_page_flow_stats(cache_stats_by_name, stats.roi_cpu_stats);
+  std::move(std::begin(vberti_tlb_lines), std::end(vberti_tlb_lines), std::back_inserter(lines));
 
   return lines;
 }

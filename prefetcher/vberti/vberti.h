@@ -41,6 +41,7 @@
 
 #include "cache.h"
 #include "modules.h"
+#include "tlb_prefetch_metadata.h"
 
 #include <algorithm>
 #include <array>

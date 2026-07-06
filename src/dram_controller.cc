@@ -570,6 +570,8 @@ bool MEMORY_CONTROLLER::add_rq(const request_type& packet, champsim::channel* ul
         ++stats.rq_read_stlb_inst_demand;
         break;
       case translation_origin::L1D_PREFETCH:
+      case translation_origin::L1D_PREFETCH_SAME_PAGE:
+      case translation_origin::L1D_PREFETCH_CROSS_PAGE:
         ++stats.rq_read_stlb_l1d_pref;
         break;
       case translation_origin::L1I_PREFETCH:
