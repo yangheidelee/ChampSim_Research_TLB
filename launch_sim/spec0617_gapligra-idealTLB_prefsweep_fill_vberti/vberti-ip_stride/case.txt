@@ -1,0 +1,46 @@
+# vberti + ip_stride ideal STLB select-trace flow
+
+fill 对照版本：ideal flow 会传 --stlb-ideal-fill，ideal-resolved STLB miss 会立即填入 STLB。
+
+工作目录：
+
+cd /home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound
+
+本脚本文件夹：
+
+launch_sim/spec0617_gapligra-idealTLB_prefsweep_fill_vberti/vberti-ip_stride
+
+当前 prefetcher 组合：
+
+- nopref-workload-sweep: L1D=no, L2C=no
+- pref-workload-sweep: L1D=vberti, L2C=ip_stride
+- ideal-demand-workload-sweep: L1D=vberti, L2C=ip_stride, --stlb-ideal-mode demand, --stlb-ideal-fill
+- ideal-l1pref-workload-sweep: L1D=vberti, L2C=ip_stride, --stlb-ideal-mode l1pref, --stlb-ideal-fill
+- ideal-all-workload-sweep: L1D=vberti, L2C=ip_stride, --stlb-ideal-mode all, --stlb-ideal-fill
+
+主要入口：
+
+MAX_PARALLEL=15 N_WARM=20 N_SIM=50 \
+./launch_sim/spec0617_gapligra-idealTLB_prefsweep_fill_vberti/vberti-ip_stride/run_tlb_select_compare.sh all 15
+
+结果目录：
+
+results/spec0617_gapligra-idealTLB_prefsweep_fill_vberti/vberti-ip_stride
+
+CSV 和图目录：
+
+csv_figure/spec0617_gapligra-idealTLB_prefsweep_fill_vberti/vberti-ip_stride/select_trace
+
+当前默认流程直接使用 sweep 一级目录下已经筛好的 selected trace JSON：
+
+../stlb_mpki_gt_1.0_selected_traces.json
+
+该 JSON 复制自：
+
+/home/zcq/git_prj/ChampSim/csv_figure/spec0617_gapligra_qmm_parsec-TLB-select-trace-compare_vberti/select_trace/data_process_for_compare/stlb_mpki_gt_1.0_selected_traces.json
+
+默认 GAP trace 目录：
+
+/data2/zcq/gap_dpc
+
+默认 all / run-only 不再跑 nopref，也不重新筛选 trace；只 build/run pref、ideal-demand、ideal-l1pref、ideal-all。后处理仍然只做 select_trace，并以 pref-workload-sweep 为 baseline 对比不同 ideal STLB 条件的 IPC。

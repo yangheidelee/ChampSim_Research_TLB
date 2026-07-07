@@ -203,6 +203,7 @@ std::vector<std::string> format_cache_metric_block(const CACHE::stats_type& stat
   lines.push_back(fmt::format("{}_prefetch_late {}", label, stats.pf_late));
   lines.push_back(fmt::format("{}_prefetch_accuracy {:.6g}", label, ratio_or_zero(stats.pf_useful, stats.pf_issued)));
   lines.push_back(fmt::format("{}_prefetch_coverage {:.6g}", label, ratio_or_zero(stats.pf_useful, stats.pf_useful + demand_miss)));
+  lines.push_back(fmt::format("{}_total_eviction {}", label, stats.eviction));
 
   return lines;
 }

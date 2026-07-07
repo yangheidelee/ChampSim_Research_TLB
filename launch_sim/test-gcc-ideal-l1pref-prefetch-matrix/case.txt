@@ -1,0 +1,211 @@
+# GCC ideal STLB / prefetcher matrix
+
+本目录用于验证 `602.gcc_s-2226B` 上 ideal STLB 改变 prefetch/cache 时序导致 IPC 下降的猜想。
+
+工程路径：
+
+```text
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound
+```
+
+实验目录：
+
+```text
+launch_sim/test-gcc-ideal-l1pref-prefetch-matrix
+```
+
+参考 JSON：
+
+```text
+launch_sim/1core-spec0617_gapligra-idealTLB-select-trace-compare_jsonnew/pref-workload-sweep/1C.fullBW.stlb.stats.json
+```
+
+固定 trace：
+
+```text
+/data0/tzh/champsim_traces/SPEC17/602.gcc_s-2226B.champsimtrace.xz
+```
+
+默认运行长度：
+
+```text
+warmup = 20M
+ROI    = 50M
+```
+
+## 配置矩阵
+
+脚本会生成并运行以下配置：
+
+```text
+pref-berti-pythia
+  ideal mode: none
+  L1D: berti
+  L2C: pythia
+
+pref-berti-no
+  ideal mode: none
+  L1D: berti
+  L2C: no
+
+pref-berti-ip_stride
+  ideal mode: none
+  L1D: berti
+  L2C: ip_stride
+
+pref-no-pythia
+  ideal mode: none
+  L1D: no
+  L2C: pythia
+
+ideal-l1pref-berti-pythia
+  ideal mode: l1pref
+  L1D: berti
+  L2C: pythia
+
+ideal-l1pref-berti-no
+  ideal mode: l1pref
+  L1D: berti
+  L2C: no
+
+ideal-l1pref-berti-ip_stride
+  ideal mode: l1pref
+  L1D: berti
+  L2C: ip_stride
+
+ideal-l1pref-no-pythia
+  ideal mode: l1pref
+  L1D: no
+  L2C: pythia
+
+ideal-all-berti-pythia
+  ideal mode: all
+  L1D: berti
+  L2C: pythia
+
+ideal-all-berti-no
+  ideal mode: all
+  L1D: berti
+  L2C: no
+
+ideal-all-berti-ip_stride
+  ideal mode: all
+  L1D: berti
+  L2C: ip_stride
+
+ideal-all-no-pythia
+  ideal mode: all
+  L1D: no
+  L2C: pythia
+```
+
+这 12 项构成当前验证矩阵：
+
+```text
+pref / ideal_l1pref / ideal_all
+  x
+Berti+Pythia / Berti+NoL2 / Berti+IPStride / NoL1D+Pythia
+```
+
+Berti+Pythia 这组用于复现已有现象：
+
+```text
+pref Berti+Pythia
+ideal_l1pref Berti+Pythia
+ideal_all Berti+Pythia
+```
+
+Berti+NoL2、Berti+IPStride 和 NoL1D+Pythia 的非 ideal pref baseline 用于分别和同一 prefetcher 组合下的 ideal_l1pref/ideal_all 做公平对比：
+
+```text
+pref Berti+NoL2
+ideal_l1pref Berti+NoL2
+ideal_all Berti+NoL2
+
+pref Berti+IPStride
+ideal_l1pref Berti+IPStride
+ideal_all Berti+IPStride
+
+pref NoL1D+Pythia
+ideal_l1pref NoL1D+Pythia
+ideal_all NoL1D+Pythia
+```
+
+`ideal_all` 下的多组用于拆分 L1D Berti 与不同 L2C prefetcher 的交互：
+
+```text
+ideal_all Berti+NoL2
+ideal_all Berti+IPStride
+ideal_all NoL1D+Pythia
+ideal_all Berti+Pythia
+```
+
+## 常用命令
+
+完整 build + run + 汇总：
+
+```bash
+cd /home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound
+MAX_PARALLEL=12 /home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/launch_sim/test-gcc-ideal-l1pref-prefetch-matrix/run_gcc_ideal_prefetch_matrix.sh all 12
+```
+
+只生成 JSON：
+
+```bash
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/launch_sim/test-gcc-ideal-l1pref-prefetch-matrix/run_gcc_ideal_prefetch_matrix.sh prepare-configs
+```
+
+只 build：
+
+```bash
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/launch_sim/test-gcc-ideal-l1pref-prefetch-matrix/run_gcc_ideal_prefetch_matrix.sh build-only
+```
+
+只跑仿真：
+
+```bash
+MAX_PARALLEL=12 /home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/launch_sim/test-gcc-ideal-l1pref-prefetch-matrix/run_gcc_ideal_prefetch_matrix.sh run-only 12
+```
+
+只 build + run 新增的 Berti+IPStride 三项，并在最后汇总全部已有 log：
+
+```bash
+cd /home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound
+CONFIG_TAG_REGEX='berti-ip_stride' MAX_PARALLEL=3 /home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/launch_sim/test-gcc-ideal-l1pref-prefetch-matrix/run_gcc_ideal_prefetch_matrix.sh all 3
+```
+
+只汇总已有 log：
+
+```bash
+/home/zcq/git_prj/champsim_ideal_stlb_ipc_upperbound/launch_sim/test-gcc-ideal-l1pref-prefetch-matrix/run_gcc_ideal_prefetch_matrix.sh summarize
+```
+
+## 输出
+
+result log：
+
+```text
+results/test-gcc-ideal-l1pref-prefetch-matrix/<config-tag>/*.log
+```
+
+汇总 CSV：
+
+```text
+csv_figure/test-gcc-ideal-l1pref-prefetch-matrix/gcc_ideal_prefetch_matrix_summary.csv
+csv_figure/test-gcc-ideal-l1pref-prefetch-matrix/gcc_ideal_prefetch_matrix_delta_vs_pref.csv
+csv_figure/test-gcc-ideal-l1pref-prefetch-matrix/gcc_ideal_prefetch_matrix_delta_vs_same_pref.csv
+```
+
+其中 `delta_vs_same_pref.csv` 是最重要的对比表：每个 ideal 结果都会和同一组 prefetcher 的非 ideal pref baseline 相比。
+
+汇总字段包括：
+
+```text
+IPC / cycles
+STLB total miss / STLB L1D prefetch miss / STLB demand miss
+L1D LOAD miss / MSHR merge / unique-to-L2C
+L2C LOAD access / hit / miss / MSHR merge / unique-to-LLC
+L1D/L2C prefetch issued / useful / useless / late / accuracy
+LLC LOAD access / hit / miss
+L1D/L2C/LLC average miss latency
+```

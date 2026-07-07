@@ -128,6 +128,7 @@ public:
 private:
   bool try_hit(const tag_lookup_type& handle_pkt);
   bool try_stlb_ideal_hit(const tag_lookup_type& handle_pkt);
+  void fill_stlb_ideal_resolved(const tag_lookup_type& handle_pkt, champsim::address ppage);
   bool handle_fill(const mshr_type& fill_mshr);
   bool handle_miss(const tag_lookup_type& handle_pkt);
   bool handle_write(const tag_lookup_type& handle_pkt);

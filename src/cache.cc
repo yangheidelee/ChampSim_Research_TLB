@@ -226,6 +226,7 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
   champsim::address evicting_address{};
   if (way != set_end && way->valid) {
     evicting_address = module_address(*way);
+    ++sim_stats.eviction;
   }
 
   if (way != set_end) {
@@ -331,12 +332,64 @@ bool CACHE::try_stlb_ideal_hit(const tag_lookup_type& handle_pkt)
   sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
   record_stlb_origin_hit(handle_pkt);
 
+  if (champsim_stlb_ideal_fill) {
+    fill_stlb_ideal_resolved(handle_pkt, champsim::address{ppage});
+  }
+
   response_type response{handle_pkt.address, handle_pkt.v_address, champsim::address{ppage}, handle_pkt.pf_metadata, handle_pkt.instr_depend_on_me};
   for (auto* ret : handle_pkt.to_return) {
     ret->push_back(response);
   }
 
   return true;
+}
+
+void CACHE::fill_stlb_ideal_resolved(const tag_lookup_type& handle_pkt, champsim::address ppage)
+{
+  assert(is_stlb());
+
+  auto [set_begin, set_end] = get_set_span(handle_pkt.address);
+  auto way = std::find_if_not(set_begin, set_end, [](auto x) { return x.valid; });
+  if (way == set_end) {
+    way = std::next(set_begin, impl_find_victim(handle_pkt.cpu, handle_pkt.instr_id, get_set_index(handle_pkt.address), &*set_begin, handle_pkt.ip,
+                                                handle_pkt.address, handle_pkt.type));
+  }
+
+  assert(set_begin <= way);
+  assert(way <= set_end);
+  assert(way != set_end || handle_pkt.type != access_type::WRITE);
+  const auto way_idx = std::distance(set_begin, way);
+
+  champsim::address evicting_address{};
+  if (way != set_end && way->valid) {
+    evicting_address = module_address(*way);
+    ++sim_stats.eviction;
+  }
+
+  if (way != set_end && way->valid && way->prefetch) {
+    ++sim_stats.pf_useless;
+  }
+
+  uint32_t metadata_thru = handle_pkt.pf_metadata;
+  if (!module_is_instr(handle_pkt)) {
+    metadata_thru =
+        impl_prefetcher_cache_fill(module_address(handle_pkt), get_set_index(handle_pkt.address), way_idx, false, evicting_address, handle_pkt.pf_metadata);
+  }
+  impl_replacement_cache_fill(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, evicting_address,
+                              handle_pkt.type);
+
+  if (way != set_end) {
+    CACHE::BLOCK to_fill;
+    to_fill.valid = true;
+    to_fill.prefetch = handle_pkt.prefetch_from_this;
+    to_fill.dirty = (handle_pkt.type == access_type::WRITE);
+    to_fill.address = handle_pkt.address;
+    to_fill.v_address = handle_pkt.v_address;
+    to_fill.data = ppage;
+    to_fill.pf_metadata = metadata_thru;
+
+    *way = to_fill;
+  }
 }
 
 auto CACHE::mshr_and_forward_packet(const tag_lookup_type& handle_pkt) -> std::pair<mshr_type, request_type>
@@ -963,6 +1016,7 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.pf_useless = sim_stats.pf_useless;
   roi_stats.pf_late = sim_stats.pf_late;
   roi_stats.pf_fill = sim_stats.pf_fill;
+  roi_stats.eviction = sim_stats.eviction;
 
   for (auto* ul : upper_levels) {
     ul->roi_stats.RQ_ACCESS = ul->sim_stats.RQ_ACCESS;

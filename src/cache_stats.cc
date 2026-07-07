@@ -9,6 +9,7 @@ cache_stats operator-(cache_stats lhs, cache_stats rhs)
   result.pf_useless = lhs.pf_useless - rhs.pf_useless;
   result.pf_late = lhs.pf_late - rhs.pf_late;
   result.pf_fill = lhs.pf_fill - rhs.pf_fill;
+  result.eviction = lhs.eviction - rhs.eviction;
 
   result.hits = lhs.hits - rhs.hits;
   result.misses = lhs.misses - rhs.misses;
