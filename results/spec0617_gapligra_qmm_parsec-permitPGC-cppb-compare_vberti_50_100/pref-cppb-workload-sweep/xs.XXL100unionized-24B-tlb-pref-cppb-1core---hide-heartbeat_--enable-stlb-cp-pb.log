@@ -1,0 +1,779 @@
+[VMEM] WARNING: physical memory size is smaller than virtual memory size.
+
+*** ChampSim Multicore Out-of-Order Simulator ***
+Warmup Instructions: 50000000
+Simulation Instructions: 100000000
+Number of CPUs: 1
+Page size: 4096
+Core 0: /data2/zcq/champsim_traces_xsbench/xs.XXL100unionized-24B.champsimtrace.xz
+VBerti Prefetcher
+BERTI HASH ENTANGLING
+BERTI IP MASK ffff
+Off-chip DRAM Size: 16 GiB Channels: 1 Width: 64-bit Data Rate: 3205 MT/s
+Warmup halting CPU 0 at instruction 50000001 cycle 13140870 for remainder of phase
+Warmup finished CPU 0 instructions: 50000001 cycles: 13140870 cumulative IPC: 3.805 (Simulation time: 00 hr 02 min 51 sec)
+Warmup complete CPU 0 instructions: 50000001 cycles: 13140870 cumulative IPC: 3.805 (Simulation time: 00 hr 02 min 51 sec)
+Simulation finished CPU 0 instructions: 100000003 cycles: 298326655 cumulative IPC: 0.3352 (Simulation time: 00 hr 29 min 44 sec)
+Simulation complete CPU 0 instructions: 100000003 cycles: 298326655 cumulative IPC: 0.3352 (Simulation time: 00 hr 29 min 44 sec)
+
+ChampSim completed all CPUs
+
+=== Simulation ===
+CPU 0 runs /data2/zcq/champsim_traces_xsbench/xs.XXL100unionized-24B.champsimtrace.xz
+
+Region of Interest Statistics
+
+CPU 0 cumulative IPC: 0.3352 instructions: 100000003 cycles: 298326655
+CPU 0 Branch Prediction Accuracy: 93.32% MPKI: 15.86 Average ROB Occupancy at Mispredict: 43.7
+Branch type MPKI
+BRANCH_DIRECT_JUMP: 0.00013
+BRANCH_INDIRECT: 0
+BRANCH_CONDITIONAL: 15.86
+BRANCH_DIRECT_CALL: 8e-05
+BRANCH_INDIRECT_CALL: 0
+BRANCH_RETURN: 0.00053
+
+cpu0->cpu0_STLB TOTAL        ACCESS:    1578275 HIT:     718328 MISS:     859947 MSHR_MERGE:          0
+cpu0->cpu0_STLB LOAD         ACCESS:    1578275 HIT:     718328 MISS:     859947 MSHR_MERGE:          0
+cpu0->cpu0_STLB RFO          ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_STLB PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_STLB WRITE        ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_STLB TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_STLB PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0 LATE:          0 TOO_EARLY:          0
+cpu0->cpu0_STLB AVERAGE MISS LATENCY: 22.98 cycles
+cpu0->cpu0_L2C TOTAL        ACCESS:    8594204 HIT:    5869267 MISS:    2724937 MSHR_MERGE:     270225
+cpu0->cpu0_L2C LOAD         ACCESS:    2393098 HIT:     499603 MISS:    1893495 MSHR_MERGE:      43830
+cpu0->cpu0_L2C RFO          ACCESS:     122863 HIT:      41468 MISS:      81395 MSHR_MERGE:       5805
+cpu0->cpu0_L2C PREFETCH     ACCESS:    3853505 HIT:    3131173 MISS:     722332 MSHR_MERGE:     220590
+cpu0->cpu0_L2C WRITE        ACCESS:    1612406 HIT:    1612381 MISS:         25 MSHR_MERGE:          0
+cpu0->cpu0_L2C TRANSLATION  ACCESS:     612332 HIT:     584642 MISS:      27690 MSHR_MERGE:          0
+cpu0->cpu0_L2C PREFETCH REQUESTED:    1131390 ISSUED:    1107568 USEFUL:     157744 USELESS:       6726 LATE:      40553 TOO_EARLY:       4930
+cpu0->cpu0_L2C AVERAGE MISS LATENCY: 236.4 cycles
+cpu0->cpu0_L1I TOTAL        ACCESS:    2629624 HIT:    2629566 MISS:         58 MSHR_MERGE:          8
+cpu0->cpu0_L1I LOAD         ACCESS:    2629624 HIT:    2629566 MISS:         58 MSHR_MERGE:          8
+cpu0->cpu0_L1I RFO          ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_L1I PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_L1I WRITE        ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_L1I TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_L1I PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0 LATE:          0 TOO_EARLY:          0
+cpu0->cpu0_L1I AVERAGE MISS LATENCY: 233.6 cycles
+cpu0->cpu0_L1D TOTAL        ACCESS:   55503793 HIT:   47833607 MISS:    7670186 MSHR_MERGE:    1780417
+cpu0->cpu0_L1D LOAD         ACCESS:   17553284 HIT:   14190126 MISS:    3363158 MSHR_MERGE:     970110
+cpu0->cpu0_L1D RFO          ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_L1D PREFETCH     ACCESS:   22507400 HIT:   19669399 MISS:    2838001 MSHR_MERGE:      76475
+cpu0->cpu0_L1D WRITE        ACCESS:   13731896 HIT:   12877302 MISS:     854594 MSHR_MERGE:     731731
+cpu0->cpu0_L1D TRANSLATION  ACCESS:    1711213 HIT:    1096780 MISS:     614433 MSHR_MERGE:       2101
+cpu0->cpu0_L1D PREFETCH REQUESTED:  122929000 ISSUED:   22507400 USEFUL:     455664 USELESS:       7269 LATE:      22160 TOO_EARLY:       3040
+cpu0->cpu0_L1D AVERAGE MISS LATENCY: 160.7 cycles
+cpu0->cpu0_ITLB TOTAL        ACCESS:    2258926 HIT:    2258918 MISS:          8 MSHR_MERGE:          1
+cpu0->cpu0_ITLB LOAD         ACCESS:    2258926 HIT:    2258918 MISS:          8 MSHR_MERGE:          1
+cpu0->cpu0_ITLB RFO          ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_ITLB PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_ITLB WRITE        ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_ITLB TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_ITLB PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0 LATE:          0 TOO_EARLY:          0
+cpu0->cpu0_ITLB AVERAGE MISS LATENCY: 337.4 cycles
+cpu0->cpu0_DTLB TOTAL        ACCESS:   44588643 HIT:   41934511 MISS:    2654132 MSHR_MERGE:    1075864
+cpu0->cpu0_DTLB LOAD         ACCESS:   44588643 HIT:   41934511 MISS:    2654132 MSHR_MERGE:    1075864
+cpu0->cpu0_DTLB RFO          ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_DTLB PREFETCH     ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_DTLB WRITE        ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_DTLB TRANSLATION  ACCESS:          0 HIT:          0 MISS:          0 MSHR_MERGE:          0
+cpu0->cpu0_DTLB PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0 LATE:          0 TOO_EARLY:          0
+cpu0->cpu0_DTLB AVERAGE MISS LATENCY: 18.02 cycles
+cpu0->LLC TOTAL        ACCESS:    3941811 HIT:     899280 MISS:    3042531 MSHR_MERGE:      44297
+cpu0->LLC LOAD         ACCESS:    1849665 HIT:     265457 MISS:    1584208 MSHR_MERGE:       8241
+cpu0->LLC RFO          ACCESS:      75590 HIT:      12502 MISS:      63088 MSHR_MERGE:        418
+cpu0->LLC PREFETCH     ACCESS:     501733 HIT:      98346 MISS:     403387 MSHR_MERGE:      35638
+cpu0->LLC WRITE        ACCESS:    1487133 HIT:     511784 MISS:     975349 MSHR_MERGE:          0
+cpu0->LLC TRANSLATION  ACCESS:      27690 HIT:      11191 MISS:      16499 MSHR_MERGE:          0
+cpu0->LLC PREFETCH REQUESTED:          0 ISSUED:          0 USEFUL:          0 USELESS:          0 LATE:          0 TOO_EARLY:          0
+cpu0->LLC AVERAGE MISS LATENCY: 165.6 cycles
+
+DRAM Statistics
+
+Channel 0 RQ ROW_BUFFER_HIT:      39389
+  ROW_BUFFER_MISS:    1983190
+  AVG DBUS CONGESTED CYCLE: 6.065
+Channel 0 WQ ROW_BUFFER_HIT:     394799
+  ROW_BUFFER_MISS:     941868
+  FULL:        963
+Channel 0 REFRESHES ISSUED:      24860
+
+[ROI Statistics]
+[System Configuration]
+num_cpus 1
+cpu_freq 4000
+fetch_width 6
+decode_width 6
+dispatch_width 6
+execute_width 6
+lq_width 2
+sq_width 2
+retire_width 6
+scheduler_size 128
+branch_mispredict_penalty 15
+rob_size 352
+lq_size 128
+sq_size 72
+ifetch_buffer_size 64
+decode_buffer_size 32
+dispatch_buffer_size 32
+register_file_size 288
+decode_latency 1
+dispatch_latency 1
+schedule_latency 1
+execute_latency 1
+page_size 4096
+block_size 64
+core_0_itlb_set 16
+core_0_itlb_way 4
+core_0_itlb_rq_size 16
+core_0_itlb_wq_size 16
+core_0_itlb_pq_size 0
+core_0_itlb_mshr_size 8
+core_0_itlb_hit_latency 1
+core_0_itlb_fill_latency 1
+core_0_itlb_max_tag_check 2
+core_0_itlb_max_fill 2
+core_0_dtlb_set 16
+core_0_dtlb_way 4
+core_0_dtlb_rq_size 16
+core_0_dtlb_wq_size 16
+core_0_dtlb_pq_size 0
+core_0_dtlb_mshr_size 8
+core_0_dtlb_hit_latency 1
+core_0_dtlb_fill_latency 1
+core_0_dtlb_max_tag_check 2
+core_0_dtlb_max_fill 2
+core_0_stlb_set 128
+core_0_stlb_way 12
+core_0_stlb_rq_size 32
+core_0_stlb_wq_size 32
+core_0_stlb_pq_size 0
+core_0_stlb_mshr_size 16
+core_0_stlb_hit_latency 4
+core_0_stlb_fill_latency 4
+core_0_stlb_max_tag_check 1
+core_0_stlb_max_fill 1
+core_0_l1i_set 64
+core_0_l1i_way 8
+core_0_l1i_rq_size 64
+core_0_l1i_wq_size 64
+core_0_l1i_pq_size 32
+core_0_l1i_mshr_size 8
+core_0_l1i_hit_latency 2
+core_0_l1i_fill_latency 2
+core_0_l1i_max_tag_check 2
+core_0_l1i_max_fill 2
+core_0_l1d_set 64
+core_0_l1d_way 12
+core_0_l1d_rq_size 64
+core_0_l1d_wq_size 64
+core_0_l1d_pq_size 8
+core_0_l1d_mshr_size 16
+core_0_l1d_hit_latency 2
+core_0_l1d_fill_latency 3
+core_0_l1d_max_tag_check 2
+core_0_l1d_max_fill 2
+core_0_l2c_set 1024
+core_0_l2c_way 8
+core_0_l2c_rq_size 32
+core_0_l2c_wq_size 32
+core_0_l2c_pq_size 16
+core_0_l2c_mshr_size 32
+core_0_l2c_hit_latency 5
+core_0_l2c_fill_latency 5
+core_0_l2c_max_tag_check 1
+core_0_l2c_max_fill 1
+llc_set 2048
+llc_way 16
+llc_rq_size 32
+llc_wq_size 32
+llc_pq_size 32
+llc_mshr_size 64
+llc_hit_latency 10
+llc_fill_latency 10
+llc_max_tag_check 1
+llc_max_fill 1
+dram_channels 1
+dram_ranks 1
+dram_bankgroups 8
+dram_banks 4
+dram_rows 65536
+dram_columns 1024
+dram_channel_width 8
+dram_rq_size 64
+dram_wq_size 64
+dram_size 17179869184
+core_0_itlb_prefetcher no
+core_0_dtlb_prefetcher no
+core_0_stlb_prefetcher no
+core_0_l1i_prefetcher next_line
+core_0_l1d_prefetcher vberti
+core_0_l2c_prefetcher ip_stride
+llc_prefetcher no
+llc_replacement drrip
+
+Core_0_instructions 100000003
+Core_0_cycles 298326655
+Core_0_IPC 0.335203
+Core_0_branch_prediction_accuracy 93.3246
+Core_0_branch_MPKI 15.8632
+Core_0_average_ROB_occupancy_at_mispredict 43.7019
+
+Core_0_ITLB_total_access 2258926
+Core_0_ITLB_total_hit 2258918
+Core_0_ITLB_total_miss 8
+Core_0_ITLB_total_MPKI 8e-05
+Core_0_ITLB_total_miss_rate 3.54151e-06
+Core_0_ITLB_demand_access 2258926
+Core_0_ITLB_demand_hit 2258918
+Core_0_ITLB_demand_miss 8
+Core_0_ITLB_demand_MPKI 8e-05
+Core_0_ITLB_demand_miss_rate 3.54151e-06
+Core_0_ITLB_load_access 2258926
+Core_0_ITLB_load_hit 2258918
+Core_0_ITLB_load_miss 8
+Core_0_ITLB_load_MPKI 8e-05
+Core_0_ITLB_load_miss_rate 3.54151e-06
+Core_0_ITLB_rfo_access 0
+Core_0_ITLB_rfo_hit 0
+Core_0_ITLB_rfo_miss 0
+Core_0_ITLB_rfo_MPKI 0
+Core_0_ITLB_rfo_miss_rate 0
+Core_0_ITLB_prefetch_access 0
+Core_0_ITLB_prefetch_hit 0
+Core_0_ITLB_prefetch_miss 0
+Core_0_ITLB_prefetch_MPKI 0
+Core_0_ITLB_prefetch_miss_rate 0
+Core_0_ITLB_writeback_access 0
+Core_0_ITLB_writeback_hit 0
+Core_0_ITLB_writeback_miss 0
+Core_0_ITLB_writeback_MPKI 0
+Core_0_ITLB_writeback_miss_rate 0
+Core_0_ITLB_prefetch_requested 0
+Core_0_ITLB_prefetch_issued 0
+Core_0_ITLB_prefetch_useful 0
+Core_0_ITLB_prefetch_useless 0
+Core_0_ITLB_prefetch_late 0
+Core_0_ITLB_prefetch_fill 0
+Core_0_ITLB_prefetch_too_early 0
+Core_0_ITLB_prefetch_too_early_among_fill 0
+Core_0_ITLB_prefetch_too_early_among_useless 0
+Core_0_ITLB_prefetch_pollution_evict 0
+Core_0_ITLB_prefetch_pollution_demand 0
+Core_0_ITLB_prefetch_pollution_among_prefetch_fill 0
+Core_0_ITLB_prefetch_accuracy 0
+Core_0_ITLB_prefetch_coverage 0
+
+Core_0_DTLB_total_access 44588643
+Core_0_DTLB_total_hit 41934511
+Core_0_DTLB_total_miss 2654132
+Core_0_DTLB_total_MPKI 26.5413
+Core_0_DTLB_total_miss_rate 0.0595248
+Core_0_DTLB_demand_access 44588643
+Core_0_DTLB_demand_hit 41934511
+Core_0_DTLB_demand_miss 2654132
+Core_0_DTLB_demand_MPKI 26.5413
+Core_0_DTLB_demand_miss_rate 0.0595248
+Core_0_DTLB_load_access 44588643
+Core_0_DTLB_load_hit 41934511
+Core_0_DTLB_load_miss 2654132
+Core_0_DTLB_load_MPKI 26.5413
+Core_0_DTLB_load_miss_rate 0.0595248
+Core_0_DTLB_rfo_access 0
+Core_0_DTLB_rfo_hit 0
+Core_0_DTLB_rfo_miss 0
+Core_0_DTLB_rfo_MPKI 0
+Core_0_DTLB_rfo_miss_rate 0
+Core_0_DTLB_prefetch_access 0
+Core_0_DTLB_prefetch_hit 0
+Core_0_DTLB_prefetch_miss 0
+Core_0_DTLB_prefetch_MPKI 0
+Core_0_DTLB_prefetch_miss_rate 0
+Core_0_DTLB_writeback_access 0
+Core_0_DTLB_writeback_hit 0
+Core_0_DTLB_writeback_miss 0
+Core_0_DTLB_writeback_MPKI 0
+Core_0_DTLB_writeback_miss_rate 0
+Core_0_DTLB_prefetch_requested 0
+Core_0_DTLB_prefetch_issued 0
+Core_0_DTLB_prefetch_useful 0
+Core_0_DTLB_prefetch_useless 0
+Core_0_DTLB_prefetch_late 0
+Core_0_DTLB_prefetch_fill 0
+Core_0_DTLB_prefetch_too_early 0
+Core_0_DTLB_prefetch_too_early_among_fill 0
+Core_0_DTLB_prefetch_too_early_among_useless 0
+Core_0_DTLB_prefetch_pollution_evict 0
+Core_0_DTLB_prefetch_pollution_demand 0
+Core_0_DTLB_prefetch_pollution_among_prefetch_fill 0
+Core_0_DTLB_prefetch_accuracy 0
+Core_0_DTLB_prefetch_coverage 0
+
+Core_0_STLB_total_access 1578275
+Core_0_STLB_total_hit 718328
+Core_0_STLB_total_miss 859947
+Core_0_STLB_total_MPKI 8.59947
+Core_0_STLB_total_miss_rate 0.544865
+Core_0_STLB_demand_access 1578275
+Core_0_STLB_demand_hit 718328
+Core_0_STLB_demand_miss 859947
+Core_0_STLB_demand_MPKI 8.59947
+Core_0_STLB_demand_miss_rate 0.544865
+Core_0_STLB_load_access 1578275
+Core_0_STLB_load_hit 718328
+Core_0_STLB_load_miss 859947
+Core_0_STLB_load_MPKI 8.59947
+Core_0_STLB_load_miss_rate 0.544865
+Core_0_STLB_rfo_access 0
+Core_0_STLB_rfo_hit 0
+Core_0_STLB_rfo_miss 0
+Core_0_STLB_rfo_MPKI 0
+Core_0_STLB_rfo_miss_rate 0
+Core_0_STLB_prefetch_access 0
+Core_0_STLB_prefetch_hit 0
+Core_0_STLB_prefetch_miss 0
+Core_0_STLB_prefetch_MPKI 0
+Core_0_STLB_prefetch_miss_rate 0
+Core_0_STLB_writeback_access 0
+Core_0_STLB_writeback_hit 0
+Core_0_STLB_writeback_miss 0
+Core_0_STLB_writeback_MPKI 0
+Core_0_STLB_writeback_miss_rate 0
+Core_0_STLB_prefetch_requested 0
+Core_0_STLB_prefetch_issued 0
+Core_0_STLB_prefetch_useful 0
+Core_0_STLB_prefetch_useless 0
+Core_0_STLB_prefetch_late 0
+Core_0_STLB_prefetch_fill 0
+Core_0_STLB_prefetch_too_early 0
+Core_0_STLB_prefetch_too_early_among_fill 0
+Core_0_STLB_prefetch_too_early_among_useless 0
+Core_0_STLB_prefetch_pollution_evict 0
+Core_0_STLB_prefetch_pollution_demand 0
+Core_0_STLB_prefetch_pollution_among_prefetch_fill 0
+Core_0_STLB_prefetch_accuracy 0
+Core_0_STLB_prefetch_coverage 0
+
+Core_0_L1I_total_access 2629624
+Core_0_L1I_total_hit 2629566
+Core_0_L1I_total_miss 58
+Core_0_L1I_total_MPKI 0.00058
+Core_0_L1I_total_miss_rate 2.20564e-05
+Core_0_L1I_demand_access 2629624
+Core_0_L1I_demand_hit 2629566
+Core_0_L1I_demand_miss 58
+Core_0_L1I_demand_MPKI 0.00058
+Core_0_L1I_demand_miss_rate 2.20564e-05
+Core_0_L1I_load_access 2629624
+Core_0_L1I_load_hit 2629566
+Core_0_L1I_load_miss 58
+Core_0_L1I_load_MPKI 0.00058
+Core_0_L1I_load_miss_rate 2.20564e-05
+Core_0_L1I_rfo_access 0
+Core_0_L1I_rfo_hit 0
+Core_0_L1I_rfo_miss 0
+Core_0_L1I_rfo_MPKI 0
+Core_0_L1I_rfo_miss_rate 0
+Core_0_L1I_prefetch_access 0
+Core_0_L1I_prefetch_hit 0
+Core_0_L1I_prefetch_miss 0
+Core_0_L1I_prefetch_MPKI 0
+Core_0_L1I_prefetch_miss_rate 0
+Core_0_L1I_writeback_access 0
+Core_0_L1I_writeback_hit 0
+Core_0_L1I_writeback_miss 0
+Core_0_L1I_writeback_MPKI 0
+Core_0_L1I_writeback_miss_rate 0
+Core_0_L1I_prefetch_requested 0
+Core_0_L1I_prefetch_issued 0
+Core_0_L1I_prefetch_useful 0
+Core_0_L1I_prefetch_useless 0
+Core_0_L1I_prefetch_late 0
+Core_0_L1I_prefetch_fill 0
+Core_0_L1I_prefetch_too_early 0
+Core_0_L1I_prefetch_too_early_among_fill 0
+Core_0_L1I_prefetch_too_early_among_useless 0
+Core_0_L1I_prefetch_pollution_evict 0
+Core_0_L1I_prefetch_pollution_demand 0
+Core_0_L1I_prefetch_pollution_among_prefetch_fill 0
+Core_0_L1I_prefetch_accuracy 0
+Core_0_L1I_prefetch_coverage 0
+
+Core_0_L1D_total_access 53792580
+Core_0_L1D_total_hit 46736827
+Core_0_L1D_total_miss 7055753
+Core_0_L1D_total_MPKI 70.5575
+Core_0_L1D_total_miss_rate 0.131166
+Core_0_L1D_demand_access 17553284
+Core_0_L1D_demand_hit 14190126
+Core_0_L1D_demand_miss 3363158
+Core_0_L1D_demand_MPKI 33.6316
+Core_0_L1D_demand_miss_rate 0.191597
+Core_0_L1D_load_access 17553284
+Core_0_L1D_load_hit 14190126
+Core_0_L1D_load_miss 3363158
+Core_0_L1D_load_MPKI 33.6316
+Core_0_L1D_load_miss_rate 0.191597
+Core_0_L1D_rfo_access 0
+Core_0_L1D_rfo_hit 0
+Core_0_L1D_rfo_miss 0
+Core_0_L1D_rfo_MPKI 0
+Core_0_L1D_rfo_miss_rate 0
+Core_0_L1D_prefetch_access 22507400
+Core_0_L1D_prefetch_hit 19669399
+Core_0_L1D_prefetch_miss 2838001
+Core_0_L1D_prefetch_MPKI 28.38
+Core_0_L1D_prefetch_miss_rate 0.126092
+Core_0_L1D_writeback_access 13731896
+Core_0_L1D_writeback_hit 12877302
+Core_0_L1D_writeback_miss 854594
+Core_0_L1D_writeback_MPKI 8.54594
+Core_0_L1D_writeback_miss_rate 0.0622342
+Core_0_L1D_prefetch_requested 122929000
+Core_0_L1D_prefetch_issued 22507400
+Core_0_L1D_prefetch_useful 455664
+Core_0_L1D_prefetch_useless 7269
+Core_0_L1D_prefetch_late 22160
+Core_0_L1D_prefetch_fill 440786
+Core_0_L1D_prefetch_too_early 3040
+Core_0_L1D_prefetch_too_early_among_fill 0.00689677
+Core_0_L1D_prefetch_too_early_among_useless 0.418214
+Core_0_L1D_prefetch_pollution_evict 70085
+Core_0_L1D_prefetch_pollution_demand 69663
+Core_0_L1D_prefetch_pollution_among_prefetch_fill 0.159
+Core_0_L1D_prefetch_accuracy 0.0202451
+Core_0_L1D_prefetch_coverage 0.119321
+
+Core_0_L2C_total_access 7981872
+Core_0_L2C_total_hit 5284625
+Core_0_L2C_total_miss 2697247
+Core_0_L2C_total_MPKI 26.9725
+Core_0_L2C_total_miss_rate 0.337922
+Core_0_L2C_demand_access 2515961
+Core_0_L2C_demand_hit 541071
+Core_0_L2C_demand_miss 1974890
+Core_0_L2C_demand_MPKI 19.7489
+Core_0_L2C_demand_miss_rate 0.784945
+Core_0_L2C_load_access 2393098
+Core_0_L2C_load_hit 499603
+Core_0_L2C_load_miss 1893495
+Core_0_L2C_load_MPKI 18.9349
+Core_0_L2C_load_miss_rate 0.791232
+Core_0_L2C_rfo_access 122863
+Core_0_L2C_rfo_hit 41468
+Core_0_L2C_rfo_miss 81395
+Core_0_L2C_rfo_MPKI 0.81395
+Core_0_L2C_rfo_miss_rate 0.662486
+Core_0_L2C_prefetch_access 3853505
+Core_0_L2C_prefetch_hit 3131173
+Core_0_L2C_prefetch_miss 722332
+Core_0_L2C_prefetch_MPKI 7.22332
+Core_0_L2C_prefetch_miss_rate 0.187448
+Core_0_L2C_writeback_access 1612406
+Core_0_L2C_writeback_hit 1612381
+Core_0_L2C_writeback_miss 25
+Core_0_L2C_writeback_MPKI 0.00025
+Core_0_L2C_writeback_miss_rate 1.55048e-05
+Core_0_L2C_prefetch_requested 1131390
+Core_0_L2C_prefetch_issued 1107568
+Core_0_L2C_prefetch_useful 157744
+Core_0_L2C_prefetch_useless 6726
+Core_0_L2C_prefetch_late 40553
+Core_0_L2C_prefetch_fill 394181
+Core_0_L2C_prefetch_too_early 4930
+Core_0_L2C_prefetch_too_early_among_fill 0.0125069
+Core_0_L2C_prefetch_too_early_among_useless 0.732977
+Core_0_L2C_prefetch_pollution_evict 81953
+Core_0_L2C_prefetch_pollution_demand 81387
+Core_0_L2C_prefetch_pollution_among_prefetch_fill 0.207907
+Core_0_L2C_prefetch_accuracy 0.142424
+Core_0_L2C_prefetch_coverage 0.0739667
+
+Core_0_LLC_total_access 3914121
+Core_0_LLC_total_hit 888089
+Core_0_LLC_total_miss 3026032
+Core_0_LLC_total_MPKI 30.2603
+Core_0_LLC_total_miss_rate 0.773106
+Core_0_LLC_demand_access 1925255
+Core_0_LLC_demand_hit 277959
+Core_0_LLC_demand_miss 1647296
+Core_0_LLC_demand_MPKI 16.473
+Core_0_LLC_demand_miss_rate 0.855625
+Core_0_LLC_load_access 1849665
+Core_0_LLC_load_hit 265457
+Core_0_LLC_load_miss 1584208
+Core_0_LLC_load_MPKI 15.8421
+Core_0_LLC_load_miss_rate 0.856484
+Core_0_LLC_rfo_access 75590
+Core_0_LLC_rfo_hit 12502
+Core_0_LLC_rfo_miss 63088
+Core_0_LLC_rfo_MPKI 0.63088
+Core_0_LLC_rfo_miss_rate 0.834608
+Core_0_LLC_prefetch_access 501733
+Core_0_LLC_prefetch_hit 98346
+Core_0_LLC_prefetch_miss 403387
+Core_0_LLC_prefetch_MPKI 4.03387
+Core_0_LLC_prefetch_miss_rate 0.803987
+Core_0_LLC_writeback_access 1487133
+Core_0_LLC_writeback_hit 511784
+Core_0_LLC_writeback_miss 975349
+Core_0_LLC_writeback_MPKI 9.75349
+Core_0_LLC_writeback_miss_rate 0.655859
+Core_0_LLC_prefetch_requested 0
+Core_0_LLC_prefetch_issued 0
+Core_0_LLC_prefetch_useful 0
+Core_0_LLC_prefetch_useless 0
+Core_0_LLC_prefetch_late 0
+Core_0_LLC_prefetch_fill 359088
+Core_0_LLC_prefetch_too_early 0
+Core_0_LLC_prefetch_too_early_among_fill 0
+Core_0_LLC_prefetch_too_early_among_useless 0
+Core_0_LLC_prefetch_pollution_evict 96031
+Core_0_LLC_prefetch_pollution_demand 96031
+Core_0_LLC_prefetch_pollution_among_prefetch_fill 0.26743
+Core_0_LLC_prefetch_accuracy 0
+Core_0_LLC_prefetch_coverage 0
+
+[DRAM Statistics]
+Channel_0_RQ_row_buffer_hit 39389
+Channel_0_RQ_row_buffer_miss 1983190
+Channel_0_WQ_row_buffer_hit 394799
+Channel_0_WQ_row_buffer_miss 941868
+Channel_0_WQ_full 963
+Channel_0_dbus_congested 11555630
+DRAM_total_RQ_row_buffer_hit 39389
+DRAM_total_RQ_row_buffer_miss 1983190
+DRAM_total_WQ_row_buffer_hit 394799
+DRAM_total_WQ_row_buffer_miss 941868
+DRAM_total_WQ_full 963
+DRAM_total_dbus_congested 11555630
+DRAM_avg_congested_cycle 6.06504
+
+====== DRAM_RQ_TRAFFIC ========
+DRAM_RQ_READ_TRAFFIC_BREAKDOWN:
+data_demand_read.count = 1638587
+data_demand_read.share = 81.00%
+
+inst_demand_read.count = 50
+inst_demand_read.share = 0.00%
+
+cache_inst_prefetch.count = 0
+cache_inst_prefetch.share = 0.00%
+
+cache_data_prefetch.count = 367749
+cache_data_prefetch.share = 18.18%
+
+stlb_data_demand.count = 15748
+stlb_data_demand.share = 0.78%
+
+stlb_inst_demand.count = 4
+stlb_inst_demand.share = 0.00%
+
+stlb_l1i_pref.count = 0
+stlb_l1i_pref.share = 0.00%
+
+stlb_l1d_pref.count = 747
+stlb_l1d_pref.share = 0.04%
+
+DRAM_RQ_READ_TRAFFIC_SUMMARY:
+cache_demand.count = 1638637
+cache_demand.share = 81.00%
+
+cache_prefetch.count = 367749
+cache_prefetch.share = 18.18%
+
+stlb_demand.count = 15752
+stlb_demand.share = 0.78%
+
+stlb_prefetch.count = 747
+stlb_prefetch.share = 0.04%
+
+DRAM_RQ_READ_TRAFFIC_DEBUG:
+total_classified_read.count = 2022885
+unclassified_read.count = 0
+total_read_with_other.count = 2022885
+
+classified_plus_unclassified_check.count = 2022885
+dram_rq_read_total_observed.count = 2022885
+dram_rq_read_total_observed.per_1K_instructions = 20.2288
+
+STLB_MISS_PTW_DRAM_TOUCH_BREAKDOWN:
+stlb_miss_total.count = 856915
+
+stlb_miss_touch_dram.count = 16495
+stlb_miss_touch_dram.share = 1.92%
+
+stlb_miss_no_dram_touch.count = 840420
+stlb_miss_no_dram_touch.share = 98.08%
+
+STLB_MISS_PTW_DRAM_TOUCH_DEBUG:
+stlb_miss_touch_plus_no_touch.count = 856915
+stlb_miss_total_check.count = 856915
+
+======STLB miss causes ========
+Core_0_STLB_miss_cause_breakdown
+Core_0_STLB_cause_Demand_Data_miss 854482
+Core_0_STLB_cause_Demand_Data_miss_rate 0.541402
+Core_0_STLB_cause_Demand_Instruction_miss 7
+Core_0_STLB_cause_Demand_Instruction_miss_rate 4.43522e-06
+Core_0_STLB_cause_L1D_Prefetch_miss 5458
+Core_0_STLB_cause_L1D_Prefetch_miss_rate 0.00345821
+Core_0_STLB_cause_L1D_Prefetch_Same_Page_miss 3
+Core_0_STLB_cause_L1D_Prefetch_Same_Page_miss_rate 1.90081e-06
+Core_0_STLB_cause_L1D_Prefetch_Cross_Page_miss 5455
+Core_0_STLB_cause_L1D_Prefetch_Cross_Page_miss_rate 0.00345631
+Core_0_STLB_cause_L1I_Prefetch_miss 0
+Core_0_STLB_cause_L1I_Prefetch_miss_rate 0
+Core_0_STLB_cause_Other_miss 0
+Core_0_STLB_cause_Other_miss_rate 0
+Core_0_STLB_Demand_miss 854489
+Core_0_STLB_Demand_miss_rate 0.541407
+Core_0_STLB_L1D_Prefetch_miss 5458
+Core_0_STLB_L1D_Prefetch_miss_rate 0.00345821
+Core_0_STLB_Other_miss 0
+Core_0_STLB_Other_miss_rate 0
+
+========== vBerti-TLB Cross-page Flow Stats ==========
+
+Core_0_vBerti_Requested 122929000
+Core_0_vBerti_Cross_page_prefetch_in_Requested 15183345
+Core_0_vBerti_Same_page_prefetch_in_Requested 107745655
+Core_0_vBerti_Cross_page_prefetch_of_Requested 0.123513
+Core_0_vBerti_Issued 22507400
+Core_0_vBerti_PQ_Drop_Rate 0.816907
+Core_0_vBerti_InPQ_Cross_page_prefetch_of_Requested 0.0122788
+Core_0_vBerti_Cross_page_PQ_Drop_rate 0.900587
+Core_0_vBerti_Cross_page_prefetch_of_Issued 0.0670635
+
+========= DTLB_vBerti Prefetch Stats =========
+Core_0_DTLB_demand_access 29648201
+Core_0_DTLB_demand_hit 27009726
+Core_0_DTLB_demand_miss 2638475
+Core_0_DTLB_demand_mshr_merge 1068265
+Core_0_DTLB_demand_fill 1570451
+Core_0_DTLB_demand_miss_rate 0.0889928
+Core_0_DTLB_demand_mpki 26.3847
+Core_0_DTLB_vberti_prefetch_access 14940442
+Core_0_DTLB_vberti_prefetch_hit 14924785
+Core_0_DTLB_vberti_prefetch_miss 15657
+Core_0_DTLB_vberti_prefetch_mshr_merge 7599
+Core_0_DTLB_vberti_prefetch_fill 7818
+Core_0_DTLB_vberti_prefetch_miss_rate 0.00104796
+Core_0_DTLB_vberti_prefetch_mpki 0.15657
+
+=== DTLB_vBerti Same/Cross-page Prefetch Stats ===
+Core_0_DTLB_vberti_same_page_prefetch 13790226
+Core_0_DTLB_vberti_same_page_prefetch_hit 13790184
+Core_0_DTLB_vberti_same_page_prefetch_miss 42
+Core_0_DTLB_vberti_same_page_prefetch_mshr_merge 10
+Core_0_DTLB_vberti_same_page_prefetch_fill 32
+Core_0_DTLB_vberti_same_page_prefetch_miss_rate 3.04564e-06
+Core_0_DTLB_vberti_same_page_prefetch_mpki 0.00042
+Core_0_DTLB_vberti_cross_page_prefetch 1150216
+Core_0_DTLB_vberti_cross_page_prefetch_hit 1134601
+Core_0_DTLB_vberti_cross_page_prefetch_miss 15615
+Core_0_DTLB_vberti_cross_page_prefetch_mshr_merge 7589
+Core_0_DTLB_vberti_cross_page_prefetch_fill 7786
+Core_0_DTLB_vberti_cross_page_prefetch_miss_rate 0.0135757
+Core_0_DTLB_vberti_cross_page_prefetch_mpki 0.15615
+Core_0_DTLB_same_page_prefetch_miss_rate 3.04564e-06
+Core_0_DTLB_same_page_prefetch_mpki 0.00042
+Core_0_DTLB_cross_page_prefetch_miss_rate 0.0135757
+Core_0_DTLB_cross_page_prefetch_mpki 0.15615
+Core_0_DTLB_cross_page_prefetch_issued 1150216
+Core_0_DTLB_cross_page_prefetch_lookups 1150216
+Core_0_DTLB_cross_page_prefetch_useful 7794
+Core_0_DTLB_cross_page_prefetch_useless 232
+Core_0_DTLB_cross_page_prefetch_late 240
+Core_0_DTLB_cross_page_prefetch_too_early 13
+Core_0_DTLB_cross_page_prefetch_too_early_among_fill 0.00166966
+Core_0_DTLB_cross_page_prefetch_too_early_among_useless 0.0560345
+Core_0_DTLB_cross_page_prefetch_pollution_evict 3971
+Core_0_DTLB_cross_page_prefetch_pollution_demand 3246
+Core_0_DTLB_cross_page_prefetch_pollution_among_prefetch_fill 0.510018
+Core_0_DTLB_cross_page_prefetch_accuracy 0.00677612
+Core_0_DTLB_cross_page_prefetch_coverage 0.00294528
+
+========= STLB_vBerti Prefetch Stats =========
+Core_0_STLB_demand_access 1570217
+Core_0_STLB_demand_hit 715728
+Core_0_STLB_demand_miss 854489
+Core_0_STLB_demand_mshr_merge 0
+Core_0_STLB_demand_fill 854490
+Core_0_STLB_demand_miss_rate 0.544185
+Core_0_STLB_demand_mpki 8.54489
+Core_0_STLB_vberti_prefetch_access 8058
+Core_0_STLB_vberti_prefetch_hit 2600
+Core_0_STLB_vberti_prefetch_miss 5458
+Core_0_STLB_vberti_prefetch_mshr_merge 0
+Core_0_STLB_vberti_prefetch_fill 3
+Core_0_STLB_vberti_prefetch_miss_rate 0.677339
+Core_0_STLB_vberti_prefetch_mpki 0.05458
+
+=== STLB_vBerti Same/Cross-page Prefetch Stats ===
+Core_0_STLB_vberti_same_page_prefetch 32
+Core_0_STLB_vberti_same_page_prefetch_hit 29
+Core_0_STLB_vberti_same_page_prefetch_miss 3
+Core_0_STLB_vberti_same_page_prefetch_mshr_merge 0
+Core_0_STLB_vberti_same_page_prefetch_fill 3
+Core_0_STLB_vberti_same_page_prefetch_miss_rate 0.09375
+Core_0_STLB_vberti_same_page_prefetch_mpki 3e-05
+Core_0_STLB_vberti_cross_page_prefetch 8026
+Core_0_STLB_vberti_cross_page_prefetch_hit 2571
+Core_0_STLB_vberti_cross_page_prefetch_miss 5455
+Core_0_STLB_vberti_cross_page_prefetch_mshr_merge 0
+Core_0_STLB_vberti_cross_page_prefetch_fill 0
+Core_0_STLB_vberti_cross_page_prefetch_miss_rate 0.679666
+Core_0_STLB_vberti_cross_page_prefetch_mpki 0.05455
+Core_0_STLB_same_page_prefetch_miss_rate 0.09375
+Core_0_STLB_same_page_prefetch_mpki 3e-05
+Core_0_STLB_cross_page_prefetch_miss_rate 0.679666
+Core_0_STLB_cross_page_prefetch_mpki 0.05455
+Core_0_STLB_cross_page_prefetch_issued 8026
+Core_0_STLB_cross_page_prefetch_lookups 8026
+Core_0_STLB_cross_page_prefetch_useful 3032
+Core_0_STLB_cross_page_prefetch_useless 1216
+Core_0_STLB_cross_page_prefetch_late 3032
+Core_0_STLB_cross_page_prefetch_too_early 0
+Core_0_STLB_cross_page_prefetch_too_early_among_fill 0
+Core_0_STLB_cross_page_prefetch_too_early_among_useless 0
+Core_0_STLB_cross_page_prefetch_pollution_evict 0
+Core_0_STLB_cross_page_prefetch_pollution_demand 0
+Core_0_STLB_cross_page_prefetch_pollution_among_prefetch_fill 0
+Core_0_STLB_cross_page_prefetch_accuracy 0.377772
+Core_0_STLB_cross_page_prefetch_coverage 0.00353577
+
+========= STLB Cross-page Prefetch Buffer Stats =========
+Core_0_STLB_raw_demand_miss 854482
+Core_0_CP_PB_insert 5455
+Core_0_CP_PB_demand_hit 3032
+Core_0_STLB_PB_demand_miss 851450
+Core_0_CP_PB_coverage 0.00354835
+Core_0_STLB_raw_demand_mpki 8.54482
+Core_0_STLB_PB_demand_mpki 8.5145
+Core_0_CP_PB_demand_hit_mpki 0.03032
+
+Core_0_TLB_demand_miss_rate 0.0288209
+Core_0_TLB_demand_mpki 8.54489
+Core_0_TLB_same_page_prefetch_miss_rate 2.17545e-07
+Core_0_TLB_same_page_prefetch_mpki 3e-05
+Core_0_TLB_cross_page_prefetch_miss_rate 0.00474259
+Core_0_TLB_cross_page_prefetch_mpki 0.05455
+Core_0_TLB_cross_page_prefetch_issued 1150216
+Core_0_TLB_cross_page_prefetch_lookups 1150216
+Core_0_TLB_cross_page_prefetch_useful 3226
+Core_0_TLB_cross_page_prefetch_useless 105
+Core_0_TLB_cross_page_prefetch_late 46
+Core_0_TLB_cross_page_prefetch_too_early 12
+Core_0_TLB_cross_page_prefetch_too_early_among_fill 0.00154123
+Core_0_TLB_cross_page_prefetch_too_early_among_useless 0.114286
+Core_0_TLB_cross_page_prefetch_accuracy 0.00280469
+Core_0_TLB_cross_page_prefetch_coverage 0.00376116
+BERTI TO_L1: 70318199 TO_L2: 100540092 TO_L2_BC_MSHR: 29776373
+BERTI AVG_LAT: 123.963 NUM_TRACK_LATENCY: 4629357 NUM_CANT_TRACK_LATENCY: 68
+BERTI CROSS_PAGE 21546831 NO_CROSS_PAGE: 149311460
+BERTI FOUND_BERTI: 30495425 NO_FOUND_BERTI: 15670912
+BERTI AVERAGE_ISSUED: 2.91592

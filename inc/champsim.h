@@ -34,6 +34,8 @@ extern const unsigned LOG2_PAGE_SIZE;
 
 namespace champsim
 {
+extern bool enable_stlb_cp_pb;
+
 struct deadlock : public std::exception {
   const uint32_t which;
   explicit deadlock(uint32_t cpu) : which(cpu) {}

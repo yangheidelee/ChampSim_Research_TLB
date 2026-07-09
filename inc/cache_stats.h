@@ -18,6 +18,9 @@ struct cache_stats {
   uint64_t pf_useless = 0;
   uint64_t pf_late = 0;
   uint64_t pf_fill = 0;
+  uint64_t pf_too_early = 0;
+  uint64_t pf_pollution_evict = 0;
+  uint64_t pf_pollution_demand = 0;
 
   // vBerti L1D prefetch candidate flow. These counters are updated only when
   // the prefetcher attaches L1D_PREF_META_VALID to pf_metadata.
@@ -31,12 +34,22 @@ struct cache_stats {
   uint64_t tlb_cross_prefetch_useful = 0;
   uint64_t tlb_cross_prefetch_useless = 0;
   uint64_t tlb_cross_prefetch_late = 0;
+  uint64_t tlb_cross_prefetch_too_early = 0;
+  uint64_t tlb_cross_prefetch_pollution_evict = 0;
+  uint64_t tlb_cross_prefetch_pollution_demand = 0;
 
   // Cross-page L1D prefetch translation quality for the DTLB+STLB system.
   uint64_t tlb_system_cross_prefetch_issued = 0;
   uint64_t tlb_system_cross_prefetch_useful = 0;
   uint64_t tlb_system_cross_prefetch_useless = 0;
   uint64_t tlb_system_cross_prefetch_late = 0;
+  uint64_t tlb_system_cross_prefetch_too_early = 0;
+
+  // STLB cross-page prefetch buffer experiment.
+  uint64_t stlb_cp_pb_raw_demand_miss = 0;
+  uint64_t stlb_cp_pb_insert = 0;
+  uint64_t stlb_cp_pb_demand_hit = 0;
+  uint64_t stlb_cp_pb_demand_miss = 0;
 
   champsim::stats::event_counter<std::pair<access_type, std::remove_cv_t<decltype(NUM_CPUS)>>> hits = {};
   champsim::stats::event_counter<std::pair<access_type, std::remove_cv_t<decltype(NUM_CPUS)>>> misses = {};

@@ -88,6 +88,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   app.add_flag("-c,--cloudsuite", knob_cloudsuite, "Read all traces using the cloudsuite format");
   app.add_flag("--hide-heartbeat", hide_heartbeat, "Hide the heartbeat output");
+  app.add_flag("--enable-stlb-cp-pb", champsim::enable_stlb_cp_pb, "Enable the STLB cross-page prefetch buffer experiment");
   app.add_option("--heartbeat-interval", heartbeat_interval, "The frequency of printing heartbeat");
   auto* warmup_instr_option = app.add_option("-w,--warmup-instructions", warmup_instructions, "The number of instructions in the warmup phase");
   auto* deprec_warmup_instr_option =

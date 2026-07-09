@@ -331,6 +331,12 @@ std::vector<std::string> format_cache_metric_block(const CACHE::stats_type& stat
   lines.push_back(fmt::format("{}_prefetch_useless {}", label, stats.pf_useless));
   lines.push_back(fmt::format("{}_prefetch_late {}", label, stats.pf_late));
   lines.push_back(fmt::format("{}_prefetch_fill {}", label, stats.pf_fill));
+  lines.push_back(fmt::format("{}_prefetch_too_early {}", label, stats.pf_too_early));
+  lines.push_back(fmt::format("{}_prefetch_too_early_among_fill {:.6g}", label, ratio_or_zero(stats.pf_too_early, stats.pf_fill)));
+  lines.push_back(fmt::format("{}_prefetch_too_early_among_useless {:.6g}", label, ratio_or_zero(stats.pf_too_early, stats.pf_useless)));
+  lines.push_back(fmt::format("{}_prefetch_pollution_evict {}", label, stats.pf_pollution_evict));
+  lines.push_back(fmt::format("{}_prefetch_pollution_demand {}", label, stats.pf_pollution_demand));
+  lines.push_back(fmt::format("{}_prefetch_pollution_among_prefetch_fill {:.6g}", label, ratio_or_zero(stats.pf_pollution_evict, stats.pf_fill)));
   lines.push_back(fmt::format("{}_prefetch_accuracy {:.6g}", label, ratio_or_zero(stats.pf_useful, stats.pf_issued)));
   lines.push_back(fmt::format("{}_prefetch_coverage {:.6g}", label, ratio_or_zero(stats.pf_useful, stats.pf_useful + demand_miss)));
 
@@ -420,7 +426,7 @@ tlb_origin_counts get_stlb_origin_counts(const CACHE::stats_type& stats, std::si
 }
 
 void append_tlb_quality_metrics(std::vector<std::string>& lines, std::string_view label, const tlb_origin_counts& counts, uint64_t instrs, uint64_t issued,
-                                uint64_t useful, uint64_t useless, uint64_t late)
+                                uint64_t useful, uint64_t useless, uint64_t late, uint64_t too_early)
 {
   lines.push_back(fmt::format("{}_demand_miss_rate {:.6g}", label, ratio_or_zero(counts.demand_miss, counts.demand_access)));
   lines.push_back(fmt::format("{}_demand_mpki {:.6g}", label, ratio_or_zero(counts.demand_miss * 1000.0, instrs)));
@@ -433,12 +439,16 @@ void append_tlb_quality_metrics(std::vector<std::string>& lines, std::string_vie
   lines.push_back(fmt::format("{}_cross_page_prefetch_useful {}", label, useful));
   lines.push_back(fmt::format("{}_cross_page_prefetch_useless {}", label, useless));
   lines.push_back(fmt::format("{}_cross_page_prefetch_late {}", label, late));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_too_early {}", label, too_early));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_too_early_among_fill {:.6g}", label, ratio_or_zero(too_early, counts.cross_fill)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_too_early_among_useless {:.6g}", label, ratio_or_zero(too_early, useless)));
   lines.push_back(fmt::format("{}_cross_page_prefetch_accuracy {:.6g}", label, ratio_or_zero(useful, issued)));
   lines.push_back(fmt::format("{}_cross_page_prefetch_coverage {:.6g}", label, ratio_or_zero(useful, useful + counts.demand_miss)));
 }
 
 void append_tlb_prefetch_quality_metrics(std::vector<std::string>& lines, std::string_view label, const tlb_origin_counts& counts, uint64_t instrs,
-                                         uint64_t issued, uint64_t useful, uint64_t useless, uint64_t late)
+                                         uint64_t issued, uint64_t useful, uint64_t useless, uint64_t late, uint64_t too_early, uint64_t pollution_evict,
+                                         uint64_t pollution_demand)
 {
   lines.push_back(fmt::format("{}_same_page_prefetch_miss_rate {:.6g}", label, ratio_or_zero(counts.same_miss, counts.same_access)));
   lines.push_back(fmt::format("{}_same_page_prefetch_mpki {:.6g}", label, ratio_or_zero(counts.same_miss * 1000.0, instrs)));
@@ -449,13 +459,19 @@ void append_tlb_prefetch_quality_metrics(std::vector<std::string>& lines, std::s
   lines.push_back(fmt::format("{}_cross_page_prefetch_useful {}", label, useful));
   lines.push_back(fmt::format("{}_cross_page_prefetch_useless {}", label, useless));
   lines.push_back(fmt::format("{}_cross_page_prefetch_late {}", label, late));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_too_early {}", label, too_early));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_too_early_among_fill {:.6g}", label, ratio_or_zero(too_early, counts.cross_fill)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_too_early_among_useless {:.6g}", label, ratio_or_zero(too_early, useless)));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_pollution_evict {}", label, pollution_evict));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_pollution_demand {}", label, pollution_demand));
+  lines.push_back(fmt::format("{}_cross_page_prefetch_pollution_among_prefetch_fill {:.6g}", label, ratio_or_zero(pollution_evict, counts.cross_fill)));
   lines.push_back(fmt::format("{}_cross_page_prefetch_accuracy {:.6g}", label, ratio_or_zero(useful, issued)));
   lines.push_back(fmt::format("{}_cross_page_prefetch_coverage {:.6g}", label, ratio_or_zero(useful, useful + counts.demand_miss)));
 }
 
 void append_tlb_vberti_detail_metrics(std::vector<std::string>& lines, std::string_view level_name, std::string_view label,
                                       const tlb_origin_counts& counts, uint64_t instrs, uint64_t issued, uint64_t useful, uint64_t useless,
-                                      uint64_t late)
+                                      uint64_t late, uint64_t too_early, uint64_t pollution_evict, uint64_t pollution_demand)
 {
   const auto vberti_prefetch_access = counts.same_access + counts.cross_access;
   const auto vberti_prefetch_hit = counts.same_hit + counts.cross_hit;
@@ -494,7 +510,21 @@ void append_tlb_vberti_detail_metrics(std::vector<std::string>& lines, std::stri
   lines.push_back(fmt::format("{}_vberti_cross_page_prefetch_fill {}", label, counts.cross_fill));
   lines.push_back(fmt::format("{}_vberti_cross_page_prefetch_miss_rate {:.6g}", label, ratio_or_zero(counts.cross_miss, counts.cross_access)));
   lines.push_back(fmt::format("{}_vberti_cross_page_prefetch_mpki {:.6g}", label, ratio_or_zero(counts.cross_miss * 1000.0, instrs)));
-  append_tlb_prefetch_quality_metrics(lines, label, counts, instrs, issued, useful, useless, late);
+  append_tlb_prefetch_quality_metrics(lines, label, counts, instrs, issued, useful, useless, late, too_early, pollution_evict, pollution_demand);
+}
+
+void append_stlb_cp_pb_metrics(std::vector<std::string>& lines, std::string_view label, const CACHE::stats_type& stats, uint64_t instrs)
+{
+  lines.emplace_back("");
+  lines.emplace_back("========= STLB Cross-page Prefetch Buffer Stats =========");
+  lines.push_back(fmt::format("{}_STLB_raw_demand_miss {}", label, stats.stlb_cp_pb_raw_demand_miss));
+  lines.push_back(fmt::format("{}_CP_PB_insert {}", label, stats.stlb_cp_pb_insert));
+  lines.push_back(fmt::format("{}_CP_PB_demand_hit {}", label, stats.stlb_cp_pb_demand_hit));
+  lines.push_back(fmt::format("{}_STLB_PB_demand_miss {}", label, stats.stlb_cp_pb_demand_miss));
+  lines.push_back(fmt::format("{}_CP_PB_coverage {:.6g}", label, ratio_or_zero(stats.stlb_cp_pb_demand_hit, stats.stlb_cp_pb_raw_demand_miss)));
+  lines.push_back(fmt::format("{}_STLB_raw_demand_mpki {:.6g}", label, ratio_or_zero(stats.stlb_cp_pb_raw_demand_miss * 1000.0, instrs)));
+  lines.push_back(fmt::format("{}_STLB_PB_demand_mpki {:.6g}", label, ratio_or_zero(stats.stlb_cp_pb_demand_miss * 1000.0, instrs)));
+  lines.push_back(fmt::format("{}_CP_PB_demand_hit_mpki {:.6g}", label, ratio_or_zero(stats.stlb_cp_pb_demand_hit * 1000.0, instrs)));
 }
 
 std::vector<std::string> format_vberti_tlb_cross_page_flow_stats(const std::map<std::string, CACHE::stats_type>& cache_stats_by_name,
@@ -538,38 +568,44 @@ std::vector<std::string> format_vberti_tlb_cross_page_flow_stats(const std::map<
         0,
         stlb_counts.demand_miss,
         0,
-        0,
+        dtlb_counts.demand_fill + stlb_counts.demand_fill,
         dtlb_counts.same_access,
         0,
         stlb_counts.same_miss,
         0,
-        0,
+        dtlb_counts.same_fill + stlb_counts.same_fill,
         dtlb_counts.cross_access,
         0,
         stlb_counts.cross_miss,
         0,
-        0,
+        dtlb_counts.cross_fill + stlb_counts.cross_fill,
     };
 
     lines.emplace_back("");
     lines.emplace_back("========= DTLB_vBerti Prefetch Stats =========");
     append_tlb_vberti_detail_metrics(lines, "DTLB", fmt::format("Core_{}_DTLB", cpu_idx), dtlb_counts, instrs,
                                      dtlb->second.tlb_cross_prefetch_issued, dtlb->second.tlb_cross_prefetch_useful,
-                                     dtlb->second.tlb_cross_prefetch_useless, dtlb->second.tlb_cross_prefetch_late);
+                                     dtlb->second.tlb_cross_prefetch_useless, dtlb->second.tlb_cross_prefetch_late,
+                                     dtlb->second.tlb_cross_prefetch_too_early, dtlb->second.tlb_cross_prefetch_pollution_evict,
+                                     dtlb->second.tlb_cross_prefetch_pollution_demand);
 
     lines.emplace_back("");
     lines.emplace_back("========= STLB_vBerti Prefetch Stats =========");
     append_tlb_vberti_detail_metrics(lines, "STLB", fmt::format("Core_{}_STLB", cpu_idx), stlb_counts, instrs,
                                      stlb->second.tlb_cross_prefetch_issued, stlb->second.tlb_cross_prefetch_useful,
-                                     stlb->second.tlb_cross_prefetch_useless, stlb->second.tlb_cross_prefetch_late);
+                                     stlb->second.tlb_cross_prefetch_useless, stlb->second.tlb_cross_prefetch_late,
+                                     stlb->second.tlb_cross_prefetch_too_early, stlb->second.tlb_cross_prefetch_pollution_evict,
+                                     stlb->second.tlb_cross_prefetch_pollution_demand);
+    append_stlb_cp_pb_metrics(lines, fmt::format("Core_{}", cpu_idx), stlb->second, instrs);
 
     const auto system_issued = dtlb->second.tlb_system_cross_prefetch_issued + stlb->second.tlb_system_cross_prefetch_issued;
     const auto system_useful = dtlb->second.tlb_system_cross_prefetch_useful + stlb->second.tlb_system_cross_prefetch_useful;
     const auto system_useless = dtlb->second.tlb_system_cross_prefetch_useless + stlb->second.tlb_system_cross_prefetch_useless;
     const auto system_late = dtlb->second.tlb_system_cross_prefetch_late + stlb->second.tlb_system_cross_prefetch_late;
+    const auto system_too_early = dtlb->second.tlb_system_cross_prefetch_too_early + stlb->second.tlb_system_cross_prefetch_too_early;
     lines.emplace_back("");
     append_tlb_quality_metrics(lines, fmt::format("Core_{}_TLB", cpu_idx), system_counts, instrs, system_issued, system_useful, system_useless,
-                               system_late);
+                               system_late, system_too_early);
   }
 
   return lines;
@@ -855,8 +891,9 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
                       stats.mshr_merge.value_or(std::pair{type, cpu}, mshr_merge_value_type{})));
     }
 
-    lines.push_back(fmt::format("cpu{}->{} PREFETCH REQUESTED: {:10} ISSUED: {:10} USEFUL: {:10} USELESS: {:10} LATE: {:10}", cpu, stats.name,
-                                stats.pf_requested, stats.pf_issued, stats.pf_useful, stats.pf_useless, stats.pf_late));
+    lines.push_back(fmt::format("cpu{}->{} PREFETCH REQUESTED: {:10} ISSUED: {:10} USEFUL: {:10} USELESS: {:10} LATE: {:10} TOO_EARLY: {:10}", cpu,
+                                stats.name, stats.pf_requested, stats.pf_issued, stats.pf_useful, stats.pf_useless, stats.pf_late,
+                                stats.pf_too_early));
 
     uint64_t total_downstream_demands = total_mshr_return - stats.mshr_return.value_or(std::pair{access_type::PREFETCH, cpu}, mshr_return_value_type{});
     lines.push_back(

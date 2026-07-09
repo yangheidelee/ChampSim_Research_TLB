@@ -1,0 +1,93 @@
+# Permit PGC vs Permit PGC + CP-PB
+
+工作目录：
+
+cd /home/zcq/git_prj/ChampSim
+
+脚本入口：
+
+launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh
+
+实验语义：
+
+1. permit PGC baseline：
+   - 使用 pref-workload-sweep
+   - L1D prefetcher 为 vberti，允许跨页预取
+   - 不开启 STLB CP-PB
+
+2. permit PGC + CP-PB：
+   - 使用 pref-cppb-workload-sweep
+   - JSON 配置和 permit PGC 一致
+   - 运行 binary 时额外带上 --enable-stlb-cp-pb
+
+3. 对比指标：
+   - IPC speedup：permit PGC + CP-PB / permit PGC
+   - STLB demand MPKI reduction：以 permit PGC 为 baseline，看 CP-PB 后 demand STLB MPKI 的减少百分比
+
+trace 选择：
+
+1. 默认 SELECT_SET=stlb：
+   - 使用 nopref 下 STLB MPKI > 1.0 的 selected trace
+   - JSON 路径：
+     launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/selected_traces/stlb_mpki_gt_1.0_selected_traces.json
+   - csv_figure 输出目录：
+     csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/stlb_mpki_gt_1_select_trace
+
+2. SELECT_SET=llc-spec：
+   - 使用 nopref 下 LLC MPKI > 1.0 的 trace，但只保留 SPEC06/SPEC17
+   - JSON 路径：
+     launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/selected_traces/llc_mpki_gt_1.0_spec_selected_traces.json
+   - csv_figure 输出目录：
+     csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/spec_llc_mpki_gt_1_select_trace
+
+复用结果：
+
+- pref-workload-sweep 的 permit PGC log 已经从原实验结果复制到：
+  results/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/pref-workload-sweep
+- 默认 STLB selected trace 的 179 条 permit log 已完整复用。
+- LLC SPEC selected trace 共 106 条，其中当前复用到 29 条 permit log，剩余 trace 在 all/run-permit 时会自动补跑。
+
+常用命令：
+
+查看当前路径和选择集：
+
+./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh status
+
+默认 STLB MPKI > 1 selected trace，完整流程：
+
+N_WARM=50 N_SIM=100 \
+./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh all 15
+
+SPEC-only LLC MPKI > 1 selected trace，完整流程：
+
+SELECT_SET=llc-spec N_WARM=50 N_SIM=100 \
+./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh all 15
+
+只构建两个 binary：
+
+./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh build-only
+
+只跑 CP-PB 配置：
+
+N_WARM=50 N_SIM=100 \
+./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh run-cppb 15
+
+只做后处理：
+
+./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh backend
+
+只做 LLC SPEC selected trace 后处理：
+
+SELECT_SET=llc-spec \
+./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh backend
+
+关键输出：
+
+- 单配置 CSV/图：
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/pref-workload-sweep
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/pref-cppb-workload-sweep
+
+- permit vs cppb 对比：
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/data_process_for_compare/permit_pgc_cppb_vs_permit_pgc_compare.csv
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/data_process_for_compare/permit_pgc_cppb_vs_permit_pgc_ipc_speedup.pdf
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/data_process_for_compare/permit_pgc_cppb_vs_permit_pgc_stlb_demand_mpki_reduction.pdf

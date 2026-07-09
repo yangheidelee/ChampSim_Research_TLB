@@ -141,6 +141,29 @@ private:
     }
   };
 
+  struct stlb_cp_pb_entry {
+    champsim::address address{};
+    champsim::address v_address{};
+    champsim::address data{};
+    uint32_t pf_metadata = 0;
+    uint32_t cpu = 0;
+    uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
+  };
+
+  struct prefetch_too_early_key {
+    uint32_t cpu = 0;
+    uint64_t line = 0;
+
+    bool operator<(const prefetch_too_early_key& other) const { return std::tie(cpu, line) < std::tie(other.cpu, other.line); }
+  };
+
+  struct prefetch_pollution_key {
+    uint32_t cpu = 0;
+    uint64_t line = 0;
+
+    bool operator<(const prefetch_pollution_key& other) const { return std::tie(cpu, line) < std::tie(other.cpu, other.line); }
+  };
+
   bool try_hit(const tag_lookup_type& handle_pkt);
   bool handle_fill(const mshr_type& fill_mshr);
   bool handle_miss(const tag_lookup_type& handle_pkt);
@@ -153,7 +176,23 @@ private:
   [[nodiscard]] bool is_dtlb() const;
   [[nodiscard]] bool is_stlb() const;
   [[nodiscard]] bool is_tlb() const;
+  [[nodiscard]] std::size_t too_early_shadow_size() const;
+  [[nodiscard]] prefetch_too_early_key make_prefetch_too_early_key(uint32_t pkt_cpu, champsim::address address) const;
+  [[nodiscard]] prefetch_pollution_key make_prefetch_pollution_key(uint32_t pkt_cpu, champsim::address address) const;
   [[nodiscard]] tlb_prefetch_key make_tlb_prefetch_key(const tag_lookup_type& pkt) const;
+  [[nodiscard]] tlb_prefetch_key make_tlb_prefetch_key(uint32_t pkt_cpu, champsim::address v_address, const uint8_t asid[2]) const;
+  void remember_prefetch_too_early_candidate(const champsim::cache_block& victim, uint32_t victim_cpu);
+  bool consume_prefetch_too_early_candidate(const tag_lookup_type& handle_pkt);
+  void discard_prefetch_too_early_candidate(const tag_lookup_type& handle_pkt);
+  void remember_prefetch_pollution_candidate(const champsim::cache_block& victim, uint32_t victim_cpu);
+  std::pair<bool, bool> consume_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt);
+  void discard_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt);
+  void remember_tlb_cross_prefetch_too_early_candidate(const champsim::cache_block& victim, uint32_t victim_cpu);
+  bool consume_tlb_cross_prefetch_too_early_candidate(const tag_lookup_type& handle_pkt);
+  void discard_tlb_cross_prefetch_too_early_candidate(const tag_lookup_type& handle_pkt);
+  void remember_tlb_cross_prefetch_pollution_candidate(const champsim::cache_block& victim, uint32_t victim_cpu);
+  std::pair<bool, bool> consume_tlb_cross_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt);
+  void discard_tlb_cross_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt);
   void record_tlb_origin_hit(const tag_lookup_type& handle_pkt);
   void record_tlb_origin_miss(const tag_lookup_type& handle_pkt);
   bool record_tlb_cross_prefetch_fill(const mshr_type& fill_mshr);
@@ -161,6 +200,10 @@ private:
   void record_tlb_cross_prefetch_hit(const tag_lookup_type& handle_pkt, champsim::cache_block& way);
   void record_tlb_cross_prefetch_miss(const tag_lookup_type& handle_pkt, bool new_mshr);
   void finalize_tlb_cross_prefetch_stats();
+  [[nodiscard]] bool should_redirect_stlb_cp_pb_fill(const mshr_type& fill_mshr) const;
+  void insert_stlb_cp_pb(const mshr_type& fill_mshr);
+  bool try_stlb_cp_pb_demand_hit(const tag_lookup_type& handle_pkt);
+  void fill_stlb_from_cp_pb(const tag_lookup_type& handle_pkt, const stlb_cp_pb_entry& entry);
 
 public:
   using BLOCK = champsim::cache_block;
@@ -195,6 +238,17 @@ private:
   std::deque<tag_lookup_type> inflight_tag_check{};
   std::deque<tag_lookup_type> translation_stash{};
   std::map<tlb_prefetch_key, uint64_t> tlb_cross_prefetch_pending{};
+  std::deque<prefetch_too_early_key> prefetch_too_early_fifo{};
+  std::map<prefetch_too_early_key, uint64_t> prefetch_too_early_shadow{};
+  std::deque<std::tuple<prefetch_pollution_key, bool, uint64_t>> prefetch_pollution_fifo{};
+  std::map<prefetch_pollution_key, std::pair<uint64_t, bool>> prefetch_pollution_shadow{};
+  uint64_t prefetch_pollution_next_id = 0;
+  std::deque<tlb_prefetch_key> tlb_cross_prefetch_too_early_fifo{};
+  std::map<tlb_prefetch_key, uint64_t> tlb_cross_prefetch_too_early_shadow{};
+  std::deque<std::tuple<tlb_prefetch_key, bool, uint64_t>> tlb_cross_prefetch_pollution_fifo{};
+  std::map<tlb_prefetch_key, std::pair<uint64_t, bool>> tlb_cross_prefetch_pollution_shadow{};
+  uint64_t tlb_cross_prefetch_pollution_next_id = 0;
+  std::map<tlb_prefetch_key, stlb_cp_pb_entry> stlb_cp_pb{};
 
 public:
   std::vector<channel_type*> upper_levels;

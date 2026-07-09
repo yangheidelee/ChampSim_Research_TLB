@@ -51,6 +51,9 @@ void to_json(nlohmann::json& j, const CACHE::stats_type& stats)
   statsmap.emplace("prefetch issued", stats.pf_issued);
   statsmap.emplace("useful prefetch", stats.pf_useful);
   statsmap.emplace("useless prefetch", stats.pf_useless);
+  statsmap.emplace("too-early prefetch", stats.pf_too_early);
+  statsmap.emplace("prefetch pollution evict", stats.pf_pollution_evict);
+  statsmap.emplace("prefetch pollution demand", stats.pf_pollution_demand);
   statsmap.emplace("vBerti prefetch requested", stats.vberti_prefetch_requested);
   statsmap.emplace("vBerti cross-page requested", stats.vberti_cross_page_requested);
   statsmap.emplace("vBerti prefetch issued", stats.vberti_prefetch_issued);
@@ -59,10 +62,18 @@ void to_json(nlohmann::json& j, const CACHE::stats_type& stats)
   statsmap.emplace("TLB cross-page prefetch useful", stats.tlb_cross_prefetch_useful);
   statsmap.emplace("TLB cross-page prefetch useless", stats.tlb_cross_prefetch_useless);
   statsmap.emplace("TLB cross-page prefetch late", stats.tlb_cross_prefetch_late);
+  statsmap.emplace("TLB cross-page prefetch too early", stats.tlb_cross_prefetch_too_early);
+  statsmap.emplace("TLB cross-page prefetch pollution evict", stats.tlb_cross_prefetch_pollution_evict);
+  statsmap.emplace("TLB cross-page prefetch pollution demand", stats.tlb_cross_prefetch_pollution_demand);
   statsmap.emplace("TLB-system cross-page prefetch issued", stats.tlb_system_cross_prefetch_issued);
   statsmap.emplace("TLB-system cross-page prefetch useful", stats.tlb_system_cross_prefetch_useful);
   statsmap.emplace("TLB-system cross-page prefetch useless", stats.tlb_system_cross_prefetch_useless);
   statsmap.emplace("TLB-system cross-page prefetch late", stats.tlb_system_cross_prefetch_late);
+  statsmap.emplace("TLB-system cross-page prefetch too early", stats.tlb_system_cross_prefetch_too_early);
+  statsmap.emplace("STLB CP-PB raw demand miss", stats.stlb_cp_pb_raw_demand_miss);
+  statsmap.emplace("STLB CP-PB insert", stats.stlb_cp_pb_insert);
+  statsmap.emplace("STLB CP-PB demand hit", stats.stlb_cp_pb_demand_hit);
+  statsmap.emplace("STLB CP-PB demand miss", stats.stlb_cp_pb_demand_miss);
 
   uint64_t total_downstream_demands = stats.mshr_return.total();
   for (std::size_t cpu = 0; cpu < NUM_CPUS; ++cpu)

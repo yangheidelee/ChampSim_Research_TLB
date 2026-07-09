@@ -34,6 +34,11 @@
 #include "util/span.h"
 #include "vpn_pattern_tracker.h"
 
+namespace champsim
+{
+bool enable_stlb_cp_pb = false;
+}
+
 namespace
 {
 void append_ptw_dram_touched_flags(std::vector<std::shared_ptr<bool>>& destination, const std::vector<std::shared_ptr<bool>>& source)
@@ -50,7 +55,83 @@ bool is_demand_origin(translation_origin origin)
   return origin == translation_origin::DEMAND_DATA || origin == translation_origin::DEMAND_INSTRUCTION;
 }
 
+bool is_data_demand_origin(translation_origin origin) { return origin == translation_origin::DEMAND_DATA; }
+
 bool is_l1d_cross_page_prefetch_origin(translation_origin origin) { return origin == translation_origin::L1D_PREFETCH_CROSS_PAGE; }
+
+bool is_cache_demand_type(access_type type) { return type == access_type::LOAD || type == access_type::RFO; }
+
+template <typename Key>
+void remember_shadow_candidate(std::deque<Key>& fifo, std::map<Key, uint64_t>& shadow, const Key& key, std::size_t limit)
+{
+  fifo.push_back(key);
+  ++shadow[key];
+
+  while (std::size(fifo) > limit) {
+    const auto old = fifo.front();
+    fifo.pop_front();
+    auto found = shadow.find(old);
+    if (found == std::end(shadow))
+      continue;
+    if (found->second <= 1) {
+      shadow.erase(found);
+    } else {
+      --found->second;
+    }
+  }
+}
+
+template <typename Key>
+bool erase_shadow_candidate(std::map<Key, uint64_t>& shadow, const Key& key)
+{
+  const auto found = shadow.find(key);
+  if (found == std::end(shadow))
+    return false;
+
+  shadow.erase(found);
+  return true;
+}
+
+template <typename Key>
+void remember_pollution_candidate(std::deque<std::tuple<Key, bool, uint64_t>>& fifo, std::map<Key, std::pair<uint64_t, bool>>& shadow, uint64_t& next_id,
+                                  const Key& key, bool demand_victim, std::size_t limit)
+{
+  const auto id = next_id++;
+  fifo.emplace_back(key, demand_victim, id);
+  shadow[key] = {id, demand_victim};
+
+  while (std::size(fifo) > limit) {
+    const auto [old_key, old_demand_victim, old_id] = fifo.front();
+    (void)old_demand_victim;
+    fifo.pop_front();
+
+    auto found = shadow.find(old_key);
+    if (found == std::end(shadow))
+      continue;
+
+    if (found->second.first == old_id)
+      shadow.erase(found);
+  }
+}
+
+template <typename Key>
+std::pair<bool, bool> consume_pollution_candidate(std::map<Key, std::pair<uint64_t, bool>>& shadow, const Key& key)
+{
+  auto found = shadow.find(key);
+  if (found == std::end(shadow))
+    return {false, false};
+
+  const auto demand_victim = found->second.second;
+  shadow.erase(found);
+
+  return {true, demand_victim};
+}
+
+template <typename Key>
+void discard_pollution_candidate(std::map<Key, std::pair<uint64_t, bool>>& shadow, const Key& key)
+{
+  shadow.erase(key);
+}
 
 struct tlb_system_key {
   uint32_t cpu = 0;
@@ -71,6 +152,8 @@ struct tlb_system_entry {
 };
 
 std::map<tlb_system_key, tlb_system_entry> tlb_system_cross_prefetch_state;
+std::deque<tlb_system_key> tlb_system_cross_prefetch_too_early_fifo;
+std::map<tlb_system_key, uint64_t> tlb_system_cross_prefetch_too_early_shadow;
 bool tlb_system_cross_prefetch_finalized = false;
 
 tlb_system_key make_tlb_system_key(uint32_t cpu, champsim::address vaddr, const uint8_t asid[2])
@@ -81,6 +164,8 @@ tlb_system_key make_tlb_system_key(uint32_t cpu, champsim::address vaddr, const 
 void reset_tlb_system_cross_prefetch_state()
 {
   tlb_system_cross_prefetch_state.clear();
+  tlb_system_cross_prefetch_too_early_fifo.clear();
+  tlb_system_cross_prefetch_too_early_shadow.clear();
   tlb_system_cross_prefetch_finalized = false;
 }
 
@@ -116,7 +201,7 @@ bool mark_tlb_system_late(const tlb_system_key& key)
   return true;
 }
 
-bool mark_tlb_system_eviction(const tlb_system_key& key)
+bool mark_tlb_system_eviction(const tlb_system_key& key, std::size_t shadow_limit)
 {
   auto found = tlb_system_cross_prefetch_state.find(key);
   if (found == std::end(tlb_system_cross_prefetch_state))
@@ -126,10 +211,19 @@ bool mark_tlb_system_eviction(const tlb_system_key& key)
     --found->second.active;
 
   const bool useless = found->second.active == 0 && found->second.pending == 0 && !found->second.used;
+  if (useless)
+    remember_shadow_candidate(tlb_system_cross_prefetch_too_early_fifo, tlb_system_cross_prefetch_too_early_shadow, key, shadow_limit);
   if (found->second.active == 0 && found->second.pending == 0)
     tlb_system_cross_prefetch_state.erase(found);
 
   return useless;
+}
+
+bool consume_tlb_system_too_early(const tlb_system_key& key) { return erase_shadow_candidate(tlb_system_cross_prefetch_too_early_shadow, key); }
+
+void discard_tlb_system_too_early(const tlb_system_key& key)
+{
+  erase_shadow_candidate(tlb_system_cross_prefetch_too_early_shadow, key);
 }
 
 uint64_t finalize_tlb_system_cross_prefetch_state()
@@ -151,6 +245,8 @@ uint64_t finalize_tlb_system_cross_prefetch_state()
 
 CACHE::CACHE(CACHE&& other)
     : operable(other),
+
+      stlb_cp_pb(std::move(other.stlb_cp_pb)),
 
       upper_levels(std::move(other.upper_levels)), lower_level(std::move(other.lower_level)), lower_translate(std::move(other.lower_translate)),
 
@@ -196,6 +292,7 @@ auto CACHE::operator=(CACHE&& other) -> CACHE&
   this->match_offset_bits = other.match_offset_bits;
   this->virtual_prefetch = other.virtual_prefetch;
   this->pref_activate_mask = std::move(other.pref_activate_mask);
+  this->stlb_cp_pb = std::move(other.stlb_cp_pb);
 
   this->sim_stats = std::move(other.sim_stats);
   this->roi_stats = std::move(other.roi_stats);
@@ -306,6 +403,22 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
 {
   cpu = fill_mshr.cpu;
 
+  if (should_redirect_stlb_cp_pb_fill(fill_mshr)) {
+    insert_stlb_cp_pb(fill_mshr);
+
+    if (fill_mshr.type != access_type::PREFETCH)
+      sim_stats.total_miss_latency_cycles += (current_time - (fill_mshr.time_enqueued + clock_period)) / clock_period;
+    sim_stats.mshr_return.increment(std::pair{fill_mshr.type, fill_mshr.cpu});
+
+    response_type response{fill_mshr.address, fill_mshr.v_address, fill_mshr.data_promise->data, fill_mshr.data_promise->pf_metadata,
+                           fill_mshr.instr_depend_on_me};
+    for (auto* ret : fill_mshr.to_return) {
+      ret->push_back(response);
+    }
+
+    return true;
+  }
+
   // find victim
   auto [set_begin, set_end] = get_set_span(fill_mshr.address);
   auto way = std::find_if_not(set_begin, set_end, [](auto x) { return x.valid; });
@@ -354,7 +467,19 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
   }
 
   if (way != set_end) {
+    discard_pollution_candidate(prefetch_pollution_shadow, make_prefetch_pollution_key(fill_mshr.cpu, fill_mshr.address));
+    if (is_tlb()) {
+      discard_pollution_candidate(tlb_cross_prefetch_pollution_shadow, make_tlb_prefetch_key(fill_mshr.cpu, fill_mshr.v_address, fill_mshr.asid));
+    }
+
+    if (way->valid && fill_mshr.type == access_type::PREFETCH) {
+      remember_prefetch_pollution_candidate(*way, way->cpu);
+    }
+    if (way->valid && is_tlb() && is_l1d_cross_page_prefetch_origin(fill_mshr.translation_source)) {
+      remember_tlb_cross_prefetch_pollution_candidate(*way, way->cpu);
+    }
     if (way->valid && way->prefetch) {
+      remember_prefetch_too_early_candidate(*way, way->cpu);
       ++sim_stats.pf_useless;
     }
     if (way->valid) {
@@ -422,6 +547,8 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
 
   if (hit) {
     sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+    discard_prefetch_too_early_candidate(handle_pkt);
+    discard_prefetch_pollution_candidate(handle_pkt);
     record_tlb_cross_prefetch_hit(handle_pkt, *way);
     record_tlb_origin_hit(handle_pkt);
 
@@ -482,6 +609,9 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
 
   cpu = handle_pkt.cpu;
 
+  if (try_stlb_cp_pb_demand_hit(handle_pkt))
+    return true;
+
   auto mshr_pkt = mshr_and_forward_packet(handle_pkt);
 
   // check mshr
@@ -525,8 +655,19 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
   }
 
   sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+  if (consume_prefetch_too_early_candidate(handle_pkt))
+    ++sim_stats.pf_too_early;
+  const auto [polluted_by_prefetch, polluted_victim_was_demand] = consume_prefetch_pollution_candidate(handle_pkt);
+  if (polluted_by_prefetch)
+    ++sim_stats.pf_pollution_evict;
+  if (polluted_victim_was_demand)
+    ++sim_stats.pf_pollution_demand;
   record_tlb_cross_prefetch_miss(handle_pkt, new_mshr);
   record_tlb_origin_miss(handle_pkt);
+  if (is_stlb() && is_data_demand_origin(handle_pkt.translation_source)) {
+    ++sim_stats.stlb_cp_pb_raw_demand_miss;
+    ++sim_stats.stlb_cp_pb_demand_miss;
+  }
   champsim::instrumentation::record_stlb_vpn_miss(NAME, warmup, current_time, clock_period, handle_pkt.ip, handle_pkt.v_address, handle_pkt.instr_id,
                                                   handle_pkt.cpu, handle_pkt.type, handle_pkt.translation_source, handle_pkt.prefetch_from_this,
                                                   handle_pkt.is_instr);
@@ -914,13 +1055,221 @@ bool CACHE::is_stlb() const { return NAME.size() >= 5 && NAME.compare(NAME.size(
 
 bool CACHE::is_tlb() const { return is_dtlb() || is_stlb(); }
 
+bool CACHE::should_redirect_stlb_cp_pb_fill(const mshr_type& fill_mshr) const
+{
+  return champsim::enable_stlb_cp_pb && is_stlb() && is_l1d_cross_page_prefetch_origin(fill_mshr.translation_source);
+}
+
+void CACHE::insert_stlb_cp_pb(const mshr_type& fill_mshr)
+{
+  const auto key = make_tlb_prefetch_key(fill_mshr.cpu, fill_mshr.v_address, fill_mshr.asid);
+  stlb_cp_pb[key] = stlb_cp_pb_entry{fill_mshr.address, fill_mshr.v_address, fill_mshr.data_promise->data, fill_mshr.data_promise->pf_metadata,
+                                     fill_mshr.cpu, {fill_mshr.asid[0], fill_mshr.asid[1]}};
+  ++sim_stats.stlb_cp_pb_insert;
+}
+
+void CACHE::fill_stlb_from_cp_pb(const tag_lookup_type& handle_pkt, const stlb_cp_pb_entry& entry)
+{
+  auto [set_begin, set_end] = get_set_span(handle_pkt.address);
+  auto way = std::find_if_not(set_begin, set_end, [](auto x) { return x.valid; });
+  if (way == set_end) {
+    way = std::next(set_begin, impl_find_victim(handle_pkt.cpu, handle_pkt.instr_id, get_set_index(handle_pkt.address), &*set_begin, handle_pkt.ip,
+                                                handle_pkt.address, handle_pkt.type));
+  }
+
+  assert(set_begin <= way);
+  assert(way < set_end);
+  const auto way_idx = std::distance(set_begin, way);
+
+  discard_pollution_candidate(prefetch_pollution_shadow, make_prefetch_pollution_key(handle_pkt.cpu, handle_pkt.address));
+  discard_pollution_candidate(tlb_cross_prefetch_pollution_shadow, make_tlb_prefetch_key(handle_pkt));
+
+  champsim::address evicting_address{};
+  if (way->valid) {
+    evicting_address = module_address(*way);
+
+    if (way->prefetch) {
+      remember_prefetch_too_early_candidate(*way, way->cpu);
+      ++sim_stats.pf_useless;
+    }
+    record_tlb_cross_prefetch_eviction(*way, way->cpu);
+  }
+
+  mshr_type fill_mshr{handle_pkt, current_time};
+  fill_mshr.data_promise = champsim::waitable{mshr_type::returned_value{entry.data, handle_pkt.pf_metadata}, current_time};
+
+  uint32_t metadata_thru = handle_pkt.pf_metadata;
+  if (!module_is_instr(fill_mshr)) {
+    metadata_thru = impl_prefetcher_cache_fill(module_address(fill_mshr), get_set_index(fill_mshr.address), way_idx, false, evicting_address,
+                                               handle_pkt.pf_metadata);
+  }
+  impl_replacement_cache_fill(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, module_address(fill_mshr), fill_mshr.ip, evicting_address,
+                              fill_mshr.type);
+
+  *way = fill_block(fill_mshr, metadata_thru);
+  sim_stats.tlb_origin_fills.increment(std::pair{fill_mshr.translation_source, fill_mshr.cpu});
+}
+
+bool CACHE::try_stlb_cp_pb_demand_hit(const tag_lookup_type& handle_pkt)
+{
+  if (!champsim::enable_stlb_cp_pb || !is_stlb() || !is_data_demand_origin(handle_pkt.translation_source))
+    return false;
+
+  auto found = stlb_cp_pb.find(make_tlb_prefetch_key(handle_pkt));
+  if (found == std::end(stlb_cp_pb))
+    return false;
+
+  const auto entry = found->second;
+  stlb_cp_pb.erase(found);
+
+  ++sim_stats.stlb_cp_pb_raw_demand_miss;
+  ++sim_stats.stlb_cp_pb_demand_hit;
+
+  sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+  if (consume_prefetch_too_early_candidate(handle_pkt))
+    ++sim_stats.pf_too_early;
+  const auto [polluted_by_prefetch, polluted_victim_was_demand] = consume_prefetch_pollution_candidate(handle_pkt);
+  if (polluted_by_prefetch)
+    ++sim_stats.pf_pollution_evict;
+  if (polluted_victim_was_demand)
+    ++sim_stats.pf_pollution_demand;
+  record_tlb_cross_prefetch_miss(handle_pkt, false);
+  record_tlb_origin_miss(handle_pkt);
+  champsim::instrumentation::record_stlb_vpn_miss(NAME, warmup, current_time, clock_period, handle_pkt.ip, handle_pkt.v_address, handle_pkt.instr_id,
+                                                  handle_pkt.cpu, handle_pkt.type, handle_pkt.translation_source, handle_pkt.prefetch_from_this,
+                                                  handle_pkt.is_instr);
+
+  fill_stlb_from_cp_pb(handle_pkt, entry);
+
+  response_type response{handle_pkt.address, handle_pkt.v_address, entry.data, handle_pkt.pf_metadata, handle_pkt.instr_depend_on_me};
+  for (auto* ret : handle_pkt.to_return) {
+    ret->push_back(response);
+  }
+
+  return true;
+}
+
+std::size_t CACHE::too_early_shadow_size() const
+{
+  return static_cast<std::size_t>(NUM_SET) * static_cast<std::size_t>(NUM_WAY);
+}
+
+CACHE::prefetch_too_early_key CACHE::make_prefetch_too_early_key(uint32_t pkt_cpu, champsim::address address) const
+{
+  return {pkt_cpu, address.slice_upper(OFFSET_BITS).to<uint64_t>()};
+}
+
+CACHE::prefetch_pollution_key CACHE::make_prefetch_pollution_key(uint32_t pkt_cpu, champsim::address address) const
+{
+  return {pkt_cpu, address.slice_upper(OFFSET_BITS).to<uint64_t>()};
+}
+
 CACHE::tlb_prefetch_key CACHE::make_tlb_prefetch_key(const tag_lookup_type& pkt) const
 {
-  return {pkt.cpu, champsim::page_number{pkt.v_address}.to<uint64_t>(), pkt.asid[0], pkt.asid[1]};
+  return make_tlb_prefetch_key(pkt.cpu, pkt.v_address, pkt.asid);
+}
+
+CACHE::tlb_prefetch_key CACHE::make_tlb_prefetch_key(uint32_t pkt_cpu, champsim::address v_address, const uint8_t asid[2]) const
+{
+  return {pkt_cpu, champsim::page_number{v_address}.to<uint64_t>(), asid[0], asid[1]};
+}
+
+void CACHE::remember_prefetch_too_early_candidate(const BLOCK& victim, uint32_t victim_cpu)
+{
+  remember_shadow_candidate(prefetch_too_early_fifo, prefetch_too_early_shadow, make_prefetch_too_early_key(victim_cpu, victim.address),
+                            too_early_shadow_size());
+}
+
+bool CACHE::consume_prefetch_too_early_candidate(const tag_lookup_type& handle_pkt)
+{
+  if (!is_cache_demand_type(handle_pkt.type))
+    return false;
+
+  return erase_shadow_candidate(prefetch_too_early_shadow, make_prefetch_too_early_key(handle_pkt.cpu, handle_pkt.address));
+}
+
+void CACHE::discard_prefetch_too_early_candidate(const tag_lookup_type& handle_pkt)
+{
+  if (!is_cache_demand_type(handle_pkt.type))
+    return;
+
+  erase_shadow_candidate(prefetch_too_early_shadow, make_prefetch_too_early_key(handle_pkt.cpu, handle_pkt.address));
+}
+
+void CACHE::remember_prefetch_pollution_candidate(const BLOCK& victim, uint32_t victim_cpu)
+{
+  remember_pollution_candidate(prefetch_pollution_fifo, prefetch_pollution_shadow, prefetch_pollution_next_id,
+                               make_prefetch_pollution_key(victim_cpu, victim.address), !victim.prefetch, too_early_shadow_size());
+}
+
+std::pair<bool, bool> CACHE::consume_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt)
+{
+  if (!is_cache_demand_type(handle_pkt.type))
+    return {false, false};
+
+  return consume_pollution_candidate(prefetch_pollution_shadow, make_prefetch_pollution_key(handle_pkt.cpu, handle_pkt.address));
+}
+
+void CACHE::discard_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt)
+{
+  if (!is_cache_demand_type(handle_pkt.type))
+    return;
+
+  discard_pollution_candidate(prefetch_pollution_shadow, make_prefetch_pollution_key(handle_pkt.cpu, handle_pkt.address));
+}
+
+void CACHE::remember_tlb_cross_prefetch_too_early_candidate(const BLOCK& victim, uint32_t victim_cpu)
+{
+  remember_shadow_candidate(tlb_cross_prefetch_too_early_fifo, tlb_cross_prefetch_too_early_shadow,
+                            make_tlb_prefetch_key(victim_cpu, victim.v_address, victim.asid), too_early_shadow_size());
+}
+
+bool CACHE::consume_tlb_cross_prefetch_too_early_candidate(const tag_lookup_type& handle_pkt)
+{
+  if (!is_tlb() || !is_demand_origin(handle_pkt.translation_source))
+    return false;
+
+  return erase_shadow_candidate(tlb_cross_prefetch_too_early_shadow, make_tlb_prefetch_key(handle_pkt));
+}
+
+void CACHE::discard_tlb_cross_prefetch_too_early_candidate(const tag_lookup_type& handle_pkt)
+{
+  if (!is_tlb() || !is_demand_origin(handle_pkt.translation_source))
+    return;
+
+  erase_shadow_candidate(tlb_cross_prefetch_too_early_shadow, make_tlb_prefetch_key(handle_pkt));
+}
+
+void CACHE::remember_tlb_cross_prefetch_pollution_candidate(const BLOCK& victim, uint32_t victim_cpu)
+{
+  remember_pollution_candidate(tlb_cross_prefetch_pollution_fifo, tlb_cross_prefetch_pollution_shadow, tlb_cross_prefetch_pollution_next_id,
+                               make_tlb_prefetch_key(victim_cpu, victim.v_address, victim.asid), is_demand_origin(victim.translation_source),
+                               too_early_shadow_size());
+}
+
+std::pair<bool, bool> CACHE::consume_tlb_cross_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt)
+{
+  if (!is_tlb() || !is_demand_origin(handle_pkt.translation_source))
+    return {false, false};
+
+  return consume_pollution_candidate(tlb_cross_prefetch_pollution_shadow, make_tlb_prefetch_key(handle_pkt));
+}
+
+void CACHE::discard_tlb_cross_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt)
+{
+  if (!is_tlb() || !is_demand_origin(handle_pkt.translation_source))
+    return;
+
+  discard_pollution_candidate(tlb_cross_prefetch_pollution_shadow, make_tlb_prefetch_key(handle_pkt));
 }
 
 void CACHE::record_tlb_origin_hit(const tag_lookup_type& handle_pkt)
 {
+  discard_tlb_cross_prefetch_too_early_candidate(handle_pkt);
+  discard_tlb_cross_prefetch_pollution_candidate(handle_pkt);
+  if (is_dtlb() && is_demand_origin(handle_pkt.translation_source))
+    discard_tlb_system_too_early(make_tlb_system_key(handle_pkt.cpu, handle_pkt.v_address, handle_pkt.asid));
+
   if (is_dtlb())
     sim_stats.dtlb_origin_hits.increment(std::pair{handle_pkt.translation_source, handle_pkt.cpu});
   if (is_stlb())
@@ -970,8 +1319,9 @@ void CACHE::record_tlb_cross_prefetch_eviction(const BLOCK& victim, uint32_t vic
   if (!is_tlb() || !victim.tlb_cross_prefetch || victim.tlb_cross_prefetch_used)
     return;
 
+  remember_tlb_cross_prefetch_too_early_candidate(victim, victim_cpu);
   ++sim_stats.tlb_cross_prefetch_useless;
-  if (mark_tlb_system_eviction(make_tlb_system_key(victim_cpu, victim.v_address, victim.asid)))
+  if (mark_tlb_system_eviction(make_tlb_system_key(victim_cpu, victim.v_address, victim.asid), too_early_shadow_size()))
     ++sim_stats.tlb_system_cross_prefetch_useless;
 }
 
@@ -994,17 +1344,32 @@ void CACHE::record_tlb_cross_prefetch_miss(const tag_lookup_type& handle_pkt, bo
   const auto local_key = make_tlb_prefetch_key(handle_pkt);
   const auto system_key = make_tlb_system_key(handle_pkt.cpu, handle_pkt.v_address, handle_pkt.asid);
   if (is_demand_origin(handle_pkt.translation_source)) {
+    bool counted_late = false;
     auto pending = tlb_cross_prefetch_pending.find(local_key);
     if (pending != std::end(tlb_cross_prefetch_pending) && pending->second > 0) {
       ++sim_stats.tlb_cross_prefetch_useful;
       ++sim_stats.tlb_cross_prefetch_late;
+      counted_late = true;
       pending->second = 0;
       tlb_cross_prefetch_pending.erase(pending);
     }
+    if (!counted_late && consume_tlb_cross_prefetch_too_early_candidate(handle_pkt))
+      ++sim_stats.tlb_cross_prefetch_too_early;
+
+    const auto [polluted_by_cross_prefetch, polluted_victim_was_demand] = consume_tlb_cross_prefetch_pollution_candidate(handle_pkt);
+    if (polluted_by_cross_prefetch)
+      ++sim_stats.tlb_cross_prefetch_pollution_evict;
+    if (polluted_victim_was_demand)
+      ++sim_stats.tlb_cross_prefetch_pollution_demand;
+
+    bool counted_system_late = false;
     if (is_dtlb() && mark_tlb_system_late(system_key)) {
       ++sim_stats.tlb_system_cross_prefetch_useful;
       ++sim_stats.tlb_system_cross_prefetch_late;
+      counted_system_late = true;
     }
+    if (is_dtlb() && !counted_system_late && consume_tlb_system_too_early(system_key))
+      ++sim_stats.tlb_system_cross_prefetch_too_early;
     return;
   }
 
@@ -1023,6 +1388,8 @@ void CACHE::finalize_tlb_cross_prefetch_stats()
   sim_stats.tlb_cross_prefetch_useless += std::accumulate(std::begin(tlb_cross_prefetch_pending), std::end(tlb_cross_prefetch_pending), uint64_t{0},
                                                           [](uint64_t acc, const auto& entry) { return acc + entry.second; });
   tlb_cross_prefetch_pending.clear();
+  tlb_cross_prefetch_too_early_fifo.clear();
+  tlb_cross_prefetch_too_early_shadow.clear();
 
   for (const auto& way : block)
     if (way.valid && way.tlb_cross_prefetch && !way.tlb_cross_prefetch_used)
@@ -1190,12 +1557,23 @@ void CACHE::begin_phase()
 {
   if (is_tlb()) {
     tlb_cross_prefetch_pending.clear();
+    tlb_cross_prefetch_too_early_fifo.clear();
+    tlb_cross_prefetch_too_early_shadow.clear();
+    tlb_cross_prefetch_pollution_fifo.clear();
+    tlb_cross_prefetch_pollution_shadow.clear();
+    tlb_cross_prefetch_pollution_next_id = 0;
+    stlb_cp_pb.clear();
     reset_tlb_system_cross_prefetch_state();
     for (auto& way : block) {
       way.tlb_cross_prefetch = false;
       way.tlb_cross_prefetch_used = false;
     }
   }
+  prefetch_too_early_fifo.clear();
+  prefetch_too_early_shadow.clear();
+  prefetch_pollution_fifo.clear();
+  prefetch_pollution_shadow.clear();
+  prefetch_pollution_next_id = 0;
 
   stats_type new_roi_stats;
   stats_type new_sim_stats;
@@ -1237,6 +1615,9 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.pf_useless = sim_stats.pf_useless;
   roi_stats.pf_late = sim_stats.pf_late;
   roi_stats.pf_fill = sim_stats.pf_fill;
+  roi_stats.pf_too_early = sim_stats.pf_too_early;
+  roi_stats.pf_pollution_evict = sim_stats.pf_pollution_evict;
+  roi_stats.pf_pollution_demand = sim_stats.pf_pollution_demand;
   roi_stats.vberti_prefetch_requested = sim_stats.vberti_prefetch_requested;
   roi_stats.vberti_cross_page_requested = sim_stats.vberti_cross_page_requested;
   roi_stats.vberti_prefetch_issued = sim_stats.vberti_prefetch_issued;
@@ -1245,10 +1626,18 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.tlb_cross_prefetch_useful = sim_stats.tlb_cross_prefetch_useful;
   roi_stats.tlb_cross_prefetch_useless = sim_stats.tlb_cross_prefetch_useless;
   roi_stats.tlb_cross_prefetch_late = sim_stats.tlb_cross_prefetch_late;
+  roi_stats.tlb_cross_prefetch_too_early = sim_stats.tlb_cross_prefetch_too_early;
+  roi_stats.tlb_cross_prefetch_pollution_evict = sim_stats.tlb_cross_prefetch_pollution_evict;
+  roi_stats.tlb_cross_prefetch_pollution_demand = sim_stats.tlb_cross_prefetch_pollution_demand;
   roi_stats.tlb_system_cross_prefetch_issued = sim_stats.tlb_system_cross_prefetch_issued;
   roi_stats.tlb_system_cross_prefetch_useful = sim_stats.tlb_system_cross_prefetch_useful;
   roi_stats.tlb_system_cross_prefetch_useless = sim_stats.tlb_system_cross_prefetch_useless;
   roi_stats.tlb_system_cross_prefetch_late = sim_stats.tlb_system_cross_prefetch_late;
+  roi_stats.tlb_system_cross_prefetch_too_early = sim_stats.tlb_system_cross_prefetch_too_early;
+  roi_stats.stlb_cp_pb_raw_demand_miss = sim_stats.stlb_cp_pb_raw_demand_miss;
+  roi_stats.stlb_cp_pb_insert = sim_stats.stlb_cp_pb_insert;
+  roi_stats.stlb_cp_pb_demand_hit = sim_stats.stlb_cp_pb_demand_hit;
+  roi_stats.stlb_cp_pb_demand_miss = sim_stats.stlb_cp_pb_demand_miss;
 
   for (auto* ul : upper_levels) {
     ul->roi_stats.RQ_ACCESS = ul->sim_stats.RQ_ACCESS;
