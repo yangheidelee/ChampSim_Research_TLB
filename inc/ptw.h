@@ -63,6 +63,10 @@ class PageTableWalker : public champsim::operable
     uint32_t pf_metadata = 0;
     uint32_t cpu = std::numeric_limits<uint32_t>::max();
     translation_origin translation_source = translation_origin::OTHER;
+    bool tlb_ptw_prefetch_tracked = false;
+    bool tlb_ptw_real_demand_waiting = false;
+    uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
+    uint64_t tlb_ptw_prefetch_id = 0;
     std::shared_ptr<bool> ptw_dram_touched = std::make_shared<bool>(false);
     bool count_ptw_dram_touch = false;
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};

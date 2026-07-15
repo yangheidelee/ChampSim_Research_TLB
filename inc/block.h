@@ -35,6 +35,17 @@ struct cache_block {
   uint32_t cpu = 0;
   uint8_t asid[2] = {0xff, 0xff};
 
+  // Stats-only provenance for end-to-end vBerti quality accounting.
+  bool vberti_end_to_end_tracked = false;
+  uint32_t vberti_end_to_end_cpu = 0;
+  uint64_t vberti_end_to_end_id = 0;
+
+  // Stats-only provenance for a translation produced by a cross-page
+  // prefetch-initiated PTW.
+  bool tlb_ptw_prefetch_tracked = false;
+  uint32_t tlb_ptw_prefetch_cpu = 0;
+  uint64_t tlb_ptw_prefetch_id = 0;
+
   // Stats-only TLB prefetch provenance. These fields do not participate in
   // lookup, replacement, or functional correctness.
   translation_origin translation_source = translation_origin::OTHER;

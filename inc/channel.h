@@ -28,6 +28,7 @@
 #include "access_type.h"
 #include "address.h"
 #include "champsim.h"
+#include "demand_tlb_pattern.h"
 
 namespace champsim
 {
@@ -63,6 +64,29 @@ class channel
     uint32_t pf_metadata = 0;
     uint32_t cpu = std::numeric_limits<uint32_t>::max();
 
+    uint32_t demand_tlb_operand_index = std::numeric_limits<uint32_t>::max();
+    demand_tlb_pattern_stage demand_tlb_stage = demand_tlb_pattern_stage::NONE;
+    std::vector<demand_tlb_pattern_event_ref> demand_tlb_events{};
+    std::vector<demand_tlb_pattern_event_ref> demand_tlb_coalesced_events{};
+
+    // Observation-only provenance for the unified real-demand and vBerti
+    // cross-page TLB pattern stream. It never participates in matching.
+    vberti_tlb_pattern_stage vberti_tlb_stage = vberti_tlb_pattern_stage::NONE;
+    std::vector<vberti_tlb_pattern_event_ref> vberti_tlb_events{};
+    std::vector<vberti_tlb_pattern_event_ref> vberti_tlb_coalesced_events{};
+
+    // Stats-only provenance for end-to-end vBerti quality accounting.
+    bool vberti_end_to_end_tracked = false;
+    uint32_t vberti_end_to_end_cpu = std::numeric_limits<uint32_t>::max();
+    uint64_t vberti_end_to_end_id = 0;
+
+    // Stats-only provenance for a cross-page prefetch that may initiate a
+    // page-table walk. These fields never affect queue matching or service.
+    bool tlb_ptw_prefetch_tracked = false;
+    bool tlb_ptw_real_demand_waiting = false;
+    uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
+    uint64_t tlb_ptw_prefetch_id = 0;
+
     champsim::address address{};
     champsim::address v_address{};
     champsim::address data{};
@@ -81,11 +105,21 @@ class channel
     uint32_t pf_metadata = 0;
     std::vector<uint64_t> instr_depend_on_me{};
 
+    // Stats-only PTW initiator provenance returned with a translation.
+    bool tlb_ptw_prefetch_tracked = false;
+    uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
+    uint64_t tlb_ptw_prefetch_id = 0;
+
     response(champsim::address addr, champsim::address v_addr, champsim::address data_, uint32_t pf_meta, std::vector<uint64_t> deps)
         : address(addr), v_address(v_addr), data(data_), pf_metadata(pf_meta), instr_depend_on_me(deps)
     {
     }
-    explicit response(request req) : response(req.address, req.v_address, req.data, req.pf_metadata, req.instr_depend_on_me) {}
+    explicit response(request req) : response(req.address, req.v_address, req.data, req.pf_metadata, req.instr_depend_on_me)
+    {
+      tlb_ptw_prefetch_tracked = req.tlb_ptw_prefetch_tracked;
+      tlb_ptw_prefetch_cpu = req.tlb_ptw_prefetch_cpu;
+      tlb_ptw_prefetch_id = req.tlb_ptw_prefetch_id;
+    }
   };
 
   template <typename R>

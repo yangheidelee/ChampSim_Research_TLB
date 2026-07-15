@@ -24,6 +24,7 @@
 #include <fmt/core.h>
 
 #include "environment.h"
+#include "demand_tlb_pattern.h"
 #include "ooo_cpu.h"
 #include "operable.h"
 #include "phase_info.h"
@@ -159,6 +160,7 @@ phase_stats do_phase(const phase_info& phase, environment& env, std::vector<trac
   auto [phase_name, is_warmup, length, trace_index, trace_names] = phase;
 
   // Initialize phase
+  champsim::demand_tlb_pattern_logger().begin_phase(is_warmup);
   for (champsim::operable& op : operables) {
     op.warmup = is_warmup;
     op.halt = false;
@@ -259,6 +261,8 @@ phase_stats do_phase(const phase_info& phase, environment& env, std::vector<trac
     fmt::print("{} complete CPU {} instructions: {} cycles: {} cumulative IPC: {:.4g} (Simulation time: {:%H hr %M min %S sec})\n", phase_name, cpu.cpu,
                cpu.sim_instr(), cpu.sim_cycle(), std::ceil(cpu.sim_instr()) / std::ceil(cpu.sim_cycle()), elapsed_time());
   }
+
+  champsim::demand_tlb_pattern_logger().end_phase(is_warmup);
 
   phase_stats stats;
   stats.name = phase.name;

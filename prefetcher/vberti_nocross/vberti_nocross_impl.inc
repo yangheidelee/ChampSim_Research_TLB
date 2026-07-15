@@ -1,4 +1,5 @@
 #include <algorithm>
+#include "vberti_end_to_end.h"
 
 /*
  * Berti: an Accurate Local-Delta Data Prefetcher
@@ -900,6 +901,9 @@ uint64_t Berti::ip_hash(uint64_t ip)
 /******************************************************************************/
 void vberti::prefetcher_initialize() 
 {
+  reset_internal_metrics();
+  internal_metrics_roi_started = false;
+
   // Calculate latency table size
   uint64_t latency_table_size = intern_->get_mshr_size();
   for (auto const &i : intern_->get_rq_size()) latency_table_size += i;
@@ -969,12 +973,16 @@ void vberti::prefetcher_initialize()
 }
 
 void vberti::prefetcher_cycle_operate()
-{}
+{
+  begin_roi_internal_metrics(intern_->warmup);
+}
 
 uint32_t vberti::prefetcher_cache_operate(champsim::address address, champsim::address ip_addr,
                                           uint8_t cache_hit, bool useful_prefetch,
                                           access_type type, uint32_t metadata_in)
 {
+  begin_roi_internal_metrics(intern_->warmup);
+
   uint64_t addr = address.to<uint64_t>();
   uint64_t ip = ip_addr.to<uint64_t>();
   const auto current_cycle = static_cast<uint64_t>(intern_->current_time.time_since_epoch() / intern_->clock_period);
@@ -1093,6 +1101,8 @@ uint32_t vberti::prefetcher_cache_fill(champsim::address address, long set, long
                                        uint8_t prefetch, champsim::address evicted_addr,
                                        uint32_t metadata_in)
 {
+  begin_roi_internal_metrics(intern_->warmup);
+
   uint64_t addr = address.to<uint64_t>();
   const auto current_cycle = static_cast<uint64_t>(intern_->current_time.time_since_epoch() / intern_->clock_period);
 
@@ -1127,13 +1137,8 @@ uint32_t vberti::prefetcher_cache_fill(champsim::address address, long set, long
     if (latency != 0)
     {
       // Calculate average latency
-      if (average_latency.num == 0) average_latency.average = (float) latency;
-      else
-      {
-        average_latency.average = average_latency.average + 
-          ((((float) latency) - average_latency.average) / average_latency.num);
-      }
       average_latency.num++;
+      average_latency.average += (static_cast<float>(latency) - average_latency.average) / static_cast<float>(average_latency.num);
     }
   }
 
@@ -1149,6 +1154,19 @@ uint32_t vberti::prefetcher_cache_fill(champsim::address address, long set, long
 
 void vberti::prefetcher_final_stats()
 {
+  begin_roi_internal_metrics(intern_->warmup);
+
+  std::cout << "====== vBerti internal metric ========" << std::endl;
+  const auto end_to_end = champsim::vberti_end_to_end::get_counters(intern_->cpu);
+  const auto end_to_end_accuracy =
+      end_to_end.issued == 0 ? 0.0 : static_cast<double>(end_to_end.useful) / static_cast<double>(end_to_end.issued);
+  const auto timely_useful = end_to_end.useful >= end_to_end.late ? end_to_end.useful - end_to_end.late : 0;
+  const auto timely_accuracy = end_to_end.issued == 0 ? 0.0 : static_cast<double>(timely_useful) / static_cast<double>(end_to_end.issued);
+  std::cout << "Core_" << intern_->cpu << "_vBerti_end_to_end_issued " << end_to_end.issued << std::endl;
+  std::cout << "Core_" << intern_->cpu << "_vBerti_end_to_end_useful " << end_to_end.useful << std::endl;
+  std::cout << "Core_" << intern_->cpu << "_vBerti_end_to_end_late " << end_to_end.late << std::endl;
+  std::cout << "Core_" << intern_->cpu << "_vBerti_end_to_end_accuracy " << end_to_end_accuracy << std::endl;
+  std::cout << "Core_" << intern_->cpu << "_vBerti_end_to_end_timely_accuracy " << timely_accuracy << std::endl;
   std::cout << "BERTI " << "TO_L1: " << pf_to_l1 << " TO_L2: " << pf_to_l2;
   std::cout << " TO_L2_BC_MSHR: " << pf_to_l2_bc_mshr << std::endl;
 
@@ -1165,6 +1183,7 @@ void vberti::prefetcher_final_stats()
   std::cout << " NO_FOUND_BERTI: " << no_found_berti << std::endl;
 
   std::cout << "BERTI";
-  std::cout << " AVERAGE_ISSUED: " << ((1.0*average_issued)/average_num);
+  std::cout << " AVERAGE_ISSUED: "
+            << (average_num == 0 ? 0.0 : static_cast<double>(average_issued) / static_cast<double>(average_num));
   std::cout << std::endl;
 }

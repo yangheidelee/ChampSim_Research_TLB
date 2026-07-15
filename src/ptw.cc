@@ -25,6 +25,7 @@
 #include "deadlock.h"
 #include "instruction.h"
 #include "ptw_builder.h" // for ptw_builder
+#include "tlb_ptw_system_stats.h"
 #include "util/bits.h"   // for bitmask, lg2, splice_bits
 #include "util/span.h"
 #include "vmem.h"
@@ -47,7 +48,9 @@ PageTableWalker::PageTableWalker(champsim::ptw_builder b)
 
 PageTableWalker::mshr_type::mshr_type(const request_type& req, std::size_t level)
     : address(req.address), v_address(req.v_address), instr_depend_on_me(req.instr_depend_on_me), pf_metadata(req.pf_metadata), cpu(req.cpu),
-      translation_source(req.translation_source), count_ptw_dram_touch(req.count_ptw_dram_touch), translation_level(level)
+      translation_source(req.translation_source), tlb_ptw_prefetch_tracked(req.tlb_ptw_prefetch_tracked),
+      tlb_ptw_real_demand_waiting(req.tlb_ptw_real_demand_waiting), tlb_ptw_prefetch_cpu(req.tlb_ptw_prefetch_cpu),
+      tlb_ptw_prefetch_id(req.tlb_ptw_prefetch_id), count_ptw_dram_touch(req.count_ptw_dram_touch), translation_level(level)
 {
   asid[0] = req.asid[0];
   asid[1] = req.asid[1];
@@ -77,7 +80,19 @@ auto PageTableWalker::handle_read(const request_type& handle_pkt, channel_type* 
                walk_offset.to<int>(), walk_init.level, current_time.time_since_epoch() / clock_period);
   }
 
-  return step_translation(fwd_mshr);
+  auto result = step_translation(fwd_mshr);
+  if (result.has_value()) {
+    if (handle_pkt.tlb_ptw_prefetch_tracked) {
+      const champsim::tlb_ptw_system::key translation{handle_pkt.cpu, champsim::page_number{handle_pkt.v_address}.to<uint64_t>(), handle_pkt.asid[0],
+                                                       handle_pkt.asid[1]};
+      champsim::tlb_ptw_system::start_prefetch_ptw(handle_pkt.tlb_ptw_prefetch_cpu, handle_pkt.tlb_ptw_prefetch_id, translation,
+                                                    handle_pkt.tlb_ptw_real_demand_waiting);
+    } else if (handle_pkt.translation_source == translation_origin::DEMAND_DATA
+               || handle_pkt.translation_source == translation_origin::DEMAND_INSTRUCTION) {
+      champsim::tlb_ptw_system::start_real_demand_ptw(handle_pkt.cpu);
+    }
+  }
+  return result;
 }
 
 auto PageTableWalker::handle_fill(const mshr_type& fill_mshr) -> std::optional<mshr_type>
@@ -147,7 +162,11 @@ long PageTableWalker::operate()
     }
 
     for (auto ret : mshr_entry.to_return) {
-      ret->emplace_back(mshr_entry.v_address, mshr_entry.v_address, *mshr_entry.data, mshr_entry.pf_metadata, mshr_entry.instr_depend_on_me);
+      auto& response = ret->emplace_back(mshr_entry.v_address, mshr_entry.v_address, *mshr_entry.data, mshr_entry.pf_metadata,
+                                         mshr_entry.instr_depend_on_me);
+      response.tlb_ptw_prefetch_tracked = mshr_entry.tlb_ptw_prefetch_tracked;
+      response.tlb_ptw_prefetch_cpu = mshr_entry.tlb_ptw_prefetch_cpu;
+      response.tlb_ptw_prefetch_id = mshr_entry.tlb_ptw_prefetch_id;
     }
   });
   fill_bw.consume(std::distance(complete_begin, complete_end));

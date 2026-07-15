@@ -81,6 +81,31 @@ namespace vberti_space
   inline uint64_t found_berti = 0;
   inline uint64_t average_issued = 0;
   inline uint64_t average_num = 0;
+
+  inline bool internal_metrics_roi_started = false;
+
+  inline void reset_internal_metrics()
+  {
+    average_latency = {};
+    pf_to_l1 = 0;
+    pf_to_l2 = 0;
+    pf_to_l2_bc_mshr = 0;
+    cant_track_latency = 0;
+    cross_page = 0;
+    no_cross_page = 0;
+    no_found_berti = 0;
+    found_berti = 0;
+    average_issued = 0;
+    average_num = 0;
+  }
+
+  inline void begin_roi_internal_metrics(bool warmup)
+  {
+    if (!warmup && !internal_metrics_roi_started) {
+      reset_internal_metrics();
+      internal_metrics_roi_started = true;
+    }
+  }
   
   /*****************************************************************************
    *                      General Structs                                      *

@@ -1,4 +1,4 @@
-# Permit PGC vs Permit PGC + CP-PB
+# Permit PGC / CP-PB / TLB Rescue 对比
 
 工作目录：
 
@@ -20,9 +20,21 @@ launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run
    - JSON 配置和 permit PGC 一致
    - 运行 binary 时额外带上 --enable-stlb-cp-pb
 
-3. 对比指标：
+3. permit PGC + ordered TLB rescue：
+   - 使用 tlb-rescue-workload-sweep
+   - JSON 配置和 permit PGC 一致
+   - 运行 binary 时额外带上 --ordered-pqfull-tlb-rescue
+   - 语义：原本因 L1D internal PQ full 被 drop 的 vBerti cross-page prefetch，不产生 data prefetch，只补发 translation-only request
+
+4. permit PGC + CP-PB + ordered TLB rescue：
+   - 使用 pref-cppb-tlb-rescue-workload-sweep
+   - JSON 配置和 permit PGC 一致
+   - 运行 binary 时额外带上 --enable-stlb-cp-pb --ordered-pqfull-tlb-rescue
+
+5. 对比指标：
    - IPC speedup：permit PGC + CP-PB / permit PGC
    - STLB demand MPKI reduction：以 permit PGC 为 baseline，看 CP-PB 后 demand STLB MPKI 的减少百分比
+   - 新增 multi compare：以 permit PGC 为 baseline，同时比较 CP-PB、TLB rescue、CP-PB + TLB rescue
 
 trace 选择：
 
@@ -63,7 +75,7 @@ SPEC-only LLC MPKI > 1 selected trace，完整流程：
 SELECT_SET=llc-spec N_WARM=50 N_SIM=100 \
 ./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh all 15
 
-只构建两个 binary：
+只构建所有配置所需 binary：
 
 ./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh build-only
 
@@ -71,6 +83,16 @@ SELECT_SET=llc-spec N_WARM=50 N_SIM=100 \
 
 N_WARM=50 N_SIM=100 \
 ./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh run-cppb 15
+
+只跑 TLB rescue 配置：
+
+N_WARM=50 N_SIM=100 \
+./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh run-tlb-rescue 15
+
+只跑 CP-PB + TLB rescue 配置：
+
+N_WARM=50 N_SIM=100 \
+./launch_sim/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/run_tlb_select_compare.sh run-cppb-tlb-rescue 15
 
 只做后处理：
 
@@ -86,8 +108,16 @@ SELECT_SET=llc-spec \
 - 单配置 CSV/图：
   csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/pref-workload-sweep
   csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/pref-cppb-workload-sweep
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/tlb-rescue-workload-sweep
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/pref-cppb-tlb-rescue-workload-sweep
 
 - permit vs cppb 对比：
   csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/data_process_for_compare/permit_pgc_cppb_vs_permit_pgc_compare.csv
   csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/data_process_for_compare/permit_pgc_cppb_vs_permit_pgc_ipc_speedup.pdf
   csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/data_process_for_compare/permit_pgc_cppb_vs_permit_pgc_stlb_demand_mpki_reduction.pdf
+
+- permit baseline multi-config 对比：
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/data_process_for_compare/permit_pgc_baseline_multi_compare.csv
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/data_process_for_compare/permit_pgc_baseline_multi_trace_compare.csv
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/data_process_for_compare/permit_pgc_baseline_multi_ipc_compare.pdf
+  csv_figure/spec0617_gapligra_qmm_parsec-permitPGC-cppb-compare_vberti_50_100/<flow_tag>/data_process_for_compare/permit_pgc_baseline_multi_stlb_demand_mpki_reduction.pdf

@@ -30,6 +30,8 @@ TRACE_FIELDS = [
     "instructions",
     "cycles",
     "ipc",
+    "dtlb_demand_miss",
+    "dtlb_demand_mpki",
     "stlb_access",
     "stlb_hit",
     "stlb_miss",
@@ -128,6 +130,91 @@ CPPB_COMPARE_FIELDS = [
     "stlb_demand_mpki_reduction_pct",
     "stlb_pb_demand_mpki_reduction",
     "stlb_pb_demand_mpki_reduction_pct",
+]
+
+MULTI_TRACE_COMPARE_FIELDS = [
+    "dataset",
+    "workload",
+    "trace_tag",
+    "permit_ipc",
+    "cppb_ipc",
+    "tlb_rescue_ipc",
+    "cppb_tlb_rescue_ipc",
+    "cppb_ipc_speedup",
+    "tlb_rescue_ipc_speedup",
+    "cppb_tlb_rescue_ipc_speedup",
+    "cppb_ipc_speedup_pct",
+    "tlb_rescue_ipc_speedup_pct",
+    "cppb_tlb_rescue_ipc_speedup_pct",
+    "permit_stlb_demand_mpki",
+    "cppb_stlb_demand_mpki",
+    "tlb_rescue_stlb_demand_mpki",
+    "cppb_tlb_rescue_stlb_demand_mpki",
+    "cppb_effective_stlb_demand_mpki",
+    "tlb_rescue_effective_stlb_demand_mpki",
+    "cppb_tlb_rescue_effective_stlb_demand_mpki",
+    "cppb_stlb_demand_mpki_reduction_pct",
+    "tlb_rescue_stlb_demand_mpki_reduction_pct",
+    "cppb_tlb_rescue_stlb_demand_mpki_reduction_pct",
+]
+
+MULTI_COMPARE_FIELDS = [
+    "dataset",
+    "workload",
+    "num_traces",
+    "permit_ipc",
+    "cppb_ipc",
+    "tlb_rescue_ipc",
+    "cppb_tlb_rescue_ipc",
+    "cppb_ipc_speedup",
+    "tlb_rescue_ipc_speedup",
+    "cppb_tlb_rescue_ipc_speedup",
+    "cppb_ipc_speedup_pct",
+    "tlb_rescue_ipc_speedup_pct",
+    "cppb_tlb_rescue_ipc_speedup_pct",
+    "permit_stlb_demand_mpki",
+    "cppb_stlb_demand_mpki",
+    "tlb_rescue_stlb_demand_mpki",
+    "cppb_tlb_rescue_stlb_demand_mpki",
+    "cppb_effective_stlb_demand_mpki",
+    "tlb_rescue_effective_stlb_demand_mpki",
+    "cppb_tlb_rescue_effective_stlb_demand_mpki",
+    "cppb_stlb_demand_mpki_reduction_pct",
+    "tlb_rescue_stlb_demand_mpki_reduction_pct",
+    "cppb_tlb_rescue_stlb_demand_mpki_reduction_pct",
+]
+
+SELECTED_TRACE_COUNT_FIELDS = [
+    "level",
+    "dataset",
+    "benchmark",
+    "num_selected_traces",
+]
+
+DTLB_MULTI_TRACE_COMPARE_FIELDS = [
+    "dataset",
+    "workload",
+    "trace_tag",
+    "permit_dtlb_real_demand_mpki",
+    "cppb_dtlb_real_demand_mpki",
+    "tlb_rescue_dtlb_real_demand_mpki",
+    "cppb_tlb_rescue_dtlb_real_demand_mpki",
+    "cppb_dtlb_real_demand_mpki_reduction_pct",
+    "tlb_rescue_dtlb_real_demand_mpki_reduction_pct",
+    "cppb_tlb_rescue_dtlb_real_demand_mpki_reduction_pct",
+]
+
+DTLB_MULTI_COMPARE_FIELDS = [
+    "dataset",
+    "workload",
+    "num_traces",
+    "permit_dtlb_real_demand_mpki",
+    "cppb_dtlb_real_demand_mpki",
+    "tlb_rescue_dtlb_real_demand_mpki",
+    "cppb_tlb_rescue_dtlb_real_demand_mpki",
+    "cppb_dtlb_real_demand_mpki_reduction_pct",
+    "tlb_rescue_dtlb_real_demand_mpki_reduction_pct",
+    "cppb_tlb_rescue_dtlb_real_demand_mpki_reduction_pct",
 ]
 
 
@@ -281,6 +368,11 @@ def extract_metrics_from_result(path: pathlib.Path) -> Optional[Dict[str, object
         "instructions": extract_metric(metric_text, "Core_0_instructions"),
         "cycles": extract_metric(metric_text, "Core_0_cycles"),
         "ipc": extract_metric(metric_text, "Core_0_IPC"),
+        # This lower-case field comes from DTLB origin counters, rather than
+        # the generic cache access-type counters.  It is real data-side demand
+        # translation traffic and excludes vBerti prefetch translations.
+        "dtlb_demand_miss": extract_metric(metric_text, "Core_0_DTLB_demand_miss", math.nan),
+        "dtlb_demand_mpki": extract_metric(metric_text, "Core_0_DTLB_demand_mpki", math.nan),
         "stlb_access": extract_metric(metric_text, "Core_0_STLB_total_access", 0.0),
         "stlb_hit": extract_metric(metric_text, "Core_0_STLB_total_hit", 0.0),
         "stlb_miss": extract_metric(metric_text, "Core_0_STLB_total_miss", 0.0),
@@ -304,6 +396,8 @@ def extract_metrics_from_result(path: pathlib.Path) -> Optional[Dict[str, object
 
     if not finite(float(row["ipc"])):
         row["ipc"] = safe_div(float(row["instructions"]), float(row["cycles"]))
+    if not finite(float(row["dtlb_demand_mpki"])):
+        row["dtlb_demand_mpki"] = safe_div(float(row["dtlb_demand_miss"]) * 1000.0, float(row["instructions"]))
     if not finite(float(row["stlb_mpki"])):
         row["stlb_mpki"] = safe_div(float(row["stlb_miss"]) * 1000.0, float(row["instructions"]))
     if not finite(float(row["stlb_miss_rate"])):
@@ -509,9 +603,9 @@ def make_cppb_trace_compare_rows(permit: Dict[str, Dict[str, object]], cppb: Dic
         p_ipc = to_float(p.get("ipc"))
         c_ipc = to_float(c.get("ipc"))
         speedup = safe_div(c_ipc, p_ipc)
-        p_mpki = to_float(p.get("stlb_demand_mpki"))
-        c_mpki = to_float(c.get("stlb_demand_mpki"))
-        c_pb_mpki = to_float(c.get("stlb_pb_demand_mpki"))
+        p_mpki = clean_stlb_demand_mpki(p)
+        c_mpki = clean_stlb_demand_mpki(c)
+        c_pb_mpki = clean_stlb_demand_mpki(c, use_cppb_residual=True)
         reduction = p_mpki - c_mpki if finite(p_mpki) and finite(c_mpki) else math.nan
         reduction_ratio = safe_div(c_mpki, p_mpki)
         reduction_pct = (1.0 - reduction_ratio) * 100.0 if finite(reduction_ratio) else math.nan
@@ -597,6 +691,352 @@ def compare_permit_cppb(args: argparse.Namespace) -> None:
         plot_cppb_stlb_demand_reduction(rows, pathlib.Path(args.stlb_fig_png), pathlib.Path(args.stlb_fig_pdf))
     log_info(f"trace compare csv: {args.trace_out_csv}")
     log_info(f"compare csv: {args.out_csv}")
+
+
+def require_trace_metric(row: Dict[str, object], key: str) -> float:
+    value = to_float(row.get(key))
+    if not finite(value):
+        raise SystemExit(f"Missing required metric {key} for trace {row.get('trace_tag', '<unknown>')}")
+    return value
+
+
+def clean_stlb_demand_mpki(row: Dict[str, object], use_cppb_residual: bool = False) -> float:
+    data_key = "stlb_pb_demand_miss" if use_cppb_residual else "demand_data_miss"
+    data_miss = require_trace_metric(row, data_key)
+    instruction_miss = require_trace_metric(row, "demand_instruction_miss")
+    instructions = require_trace_metric(row, "instructions")
+    return safe_div((data_miss + instruction_miss) * 1000.0, instructions)
+
+
+def clean_dtlb_real_demand_mpki(row: Dict[str, object]) -> float:
+    """Recompute DTLB MPKI from its origin-aware demand miss count.
+
+    The DTLB is data-side in this hierarchy.  The source counter is the
+    origin-aware demand aggregate and therefore excludes prefetch-origin
+    translation lookups; recomputation deliberately avoids generic
+    ``*_demand_MPKI`` cache statistics.
+    """
+    demand_miss = require_trace_metric(row, "dtlb_demand_miss")
+    instructions = require_trace_metric(row, "instructions")
+    return safe_div(demand_miss * 1000.0, instructions)
+
+
+def require_same_trace_sets(named: Dict[str, Dict[str, Dict[str, object]]]) -> List[str]:
+    items = list(named.items())
+    if not items:
+        raise SystemExit("No trace CSVs were provided")
+    base_name, base_rows = items[0]
+    base_tags = set(base_rows)
+    for name, rows in items[1:]:
+        tags = set(rows)
+        if tags != base_tags:
+            missing = sorted(base_tags - tags)
+            extra = sorted(tags - base_tags)
+            detail = []
+            if missing:
+                detail.append(f"missing in {name}: {len(missing)} ({', '.join(missing[:12])}{' ...' if len(missing) > 12 else ''})")
+            if extra:
+                detail.append(f"extra in {name}: {len(extra)} ({', '.join(extra[:12])}{' ...' if len(extra) > 12 else ''})")
+            raise SystemExit(f"Trace set mismatch against {base_name}: " + "; ".join(detail))
+    return sorted(base_tags)
+
+
+def make_multi_trace_compare_rows(
+    permit: Dict[str, Dict[str, object]],
+    cppb: Dict[str, Dict[str, object]],
+    tlb_rescue: Dict[str, Dict[str, object]],
+    cppb_tlb_rescue: Dict[str, Dict[str, object]],
+) -> List[Dict[str, object]]:
+    tags = require_same_trace_sets({
+        "permit": permit,
+        "cppb": cppb,
+        "tlb_rescue": tlb_rescue,
+        "cppb_tlb_rescue": cppb_tlb_rescue,
+    })
+    rows: List[Dict[str, object]] = []
+    for trace_tag in tags:
+        p = permit[trace_tag]
+        c = cppb[trace_tag]
+        r = tlb_rescue[trace_tag]
+        cr = cppb_tlb_rescue[trace_tag]
+
+        p_ipc = to_float(p.get("ipc"))
+        c_ipc = to_float(c.get("ipc"))
+        r_ipc = to_float(r.get("ipc"))
+        cr_ipc = to_float(cr.get("ipc"))
+        c_speedup = safe_div(c_ipc, p_ipc)
+        r_speedup = safe_div(r_ipc, p_ipc)
+        cr_speedup = safe_div(cr_ipc, p_ipc)
+
+        p_mpki = clean_stlb_demand_mpki(p)
+        c_raw_mpki = clean_stlb_demand_mpki(c)
+        r_raw_mpki = clean_stlb_demand_mpki(r)
+        cr_raw_mpki = clean_stlb_demand_mpki(cr)
+        c_eff_mpki = clean_stlb_demand_mpki(c, use_cppb_residual=True)
+        r_eff_mpki = clean_stlb_demand_mpki(r)
+        cr_eff_mpki = clean_stlb_demand_mpki(cr, use_cppb_residual=True)
+
+        def reduction_pct(value: float) -> float:
+            ratio = safe_div(value, p_mpki)
+            return (1.0 - ratio) * 100.0 if finite(ratio) else math.nan
+
+        rows.append({
+            "dataset": p.get("dataset", "unknown"),
+            "workload": p.get("workload", trace_tag),
+            "trace_tag": trace_tag,
+            "permit_ipc": p_ipc,
+            "cppb_ipc": c_ipc,
+            "tlb_rescue_ipc": r_ipc,
+            "cppb_tlb_rescue_ipc": cr_ipc,
+            "cppb_ipc_speedup": c_speedup,
+            "tlb_rescue_ipc_speedup": r_speedup,
+            "cppb_tlb_rescue_ipc_speedup": cr_speedup,
+            "cppb_ipc_speedup_pct": (c_speedup - 1.0) * 100.0 if finite(c_speedup) else math.nan,
+            "tlb_rescue_ipc_speedup_pct": (r_speedup - 1.0) * 100.0 if finite(r_speedup) else math.nan,
+            "cppb_tlb_rescue_ipc_speedup_pct": (cr_speedup - 1.0) * 100.0 if finite(cr_speedup) else math.nan,
+            "permit_stlb_demand_mpki": p_mpki,
+            "cppb_stlb_demand_mpki": c_raw_mpki,
+            "tlb_rescue_stlb_demand_mpki": r_raw_mpki,
+            "cppb_tlb_rescue_stlb_demand_mpki": cr_raw_mpki,
+            "cppb_effective_stlb_demand_mpki": c_eff_mpki,
+            "tlb_rescue_effective_stlb_demand_mpki": r_eff_mpki,
+            "cppb_tlb_rescue_effective_stlb_demand_mpki": cr_eff_mpki,
+            "cppb_stlb_demand_mpki_reduction_pct": reduction_pct(c_eff_mpki),
+            "tlb_rescue_stlb_demand_mpki_reduction_pct": reduction_pct(r_eff_mpki),
+            "cppb_tlb_rescue_stlb_demand_mpki_reduction_pct": reduction_pct(cr_eff_mpki),
+        })
+    rows.sort(key=trace_sort_key)
+    return rows
+
+
+def aggregate_multi_compare_rows(dataset: str, workload: str, rows: List[Dict[str, object]]) -> Dict[str, object]:
+    permit_ipc = geomean([float(r["permit_ipc"]) for r in rows])
+    cppb_ipc = geomean([float(r["cppb_ipc"]) for r in rows])
+    tlb_rescue_ipc = geomean([float(r["tlb_rescue_ipc"]) for r in rows])
+    cppb_tlb_rescue_ipc = geomean([float(r["cppb_tlb_rescue_ipc"]) for r in rows])
+    cppb_speedup = geomean([float(r["cppb_ipc_speedup"]) for r in rows])
+    tlb_rescue_speedup = geomean([float(r["tlb_rescue_ipc_speedup"]) for r in rows])
+    cppb_tlb_rescue_speedup = geomean([float(r["cppb_tlb_rescue_ipc_speedup"]) for r in rows])
+
+    permit_mpki = amean([float(r["permit_stlb_demand_mpki"]) for r in rows])
+    cppb_raw_mpki = amean([float(r["cppb_stlb_demand_mpki"]) for r in rows])
+    tlb_rescue_raw_mpki = amean([float(r["tlb_rescue_stlb_demand_mpki"]) for r in rows])
+    cppb_tlb_rescue_raw_mpki = amean([float(r["cppb_tlb_rescue_stlb_demand_mpki"]) for r in rows])
+    cppb_eff_mpki = amean([float(r["cppb_effective_stlb_demand_mpki"]) for r in rows])
+    tlb_rescue_eff_mpki = amean([float(r["tlb_rescue_effective_stlb_demand_mpki"]) for r in rows])
+    cppb_tlb_rescue_eff_mpki = amean([float(r["cppb_tlb_rescue_effective_stlb_demand_mpki"]) for r in rows])
+
+    def reduction_pct(value: float) -> float:
+        ratio = safe_div(value, permit_mpki)
+        return (1.0 - ratio) * 100.0 if finite(ratio) else math.nan
+
+    return {
+        "dataset": dataset,
+        "workload": workload,
+        "num_traces": len(rows),
+        "permit_ipc": permit_ipc,
+        "cppb_ipc": cppb_ipc,
+        "tlb_rescue_ipc": tlb_rescue_ipc,
+        "cppb_tlb_rescue_ipc": cppb_tlb_rescue_ipc,
+        "cppb_ipc_speedup": cppb_speedup,
+        "tlb_rescue_ipc_speedup": tlb_rescue_speedup,
+        "cppb_tlb_rescue_ipc_speedup": cppb_tlb_rescue_speedup,
+        "cppb_ipc_speedup_pct": (cppb_speedup - 1.0) * 100.0 if finite(cppb_speedup) else math.nan,
+        "tlb_rescue_ipc_speedup_pct": (tlb_rescue_speedup - 1.0) * 100.0 if finite(tlb_rescue_speedup) else math.nan,
+        "cppb_tlb_rescue_ipc_speedup_pct": (cppb_tlb_rescue_speedup - 1.0) * 100.0 if finite(cppb_tlb_rescue_speedup) else math.nan,
+        "permit_stlb_demand_mpki": permit_mpki,
+        "cppb_stlb_demand_mpki": cppb_raw_mpki,
+        "tlb_rescue_stlb_demand_mpki": tlb_rescue_raw_mpki,
+        "cppb_tlb_rescue_stlb_demand_mpki": cppb_tlb_rescue_raw_mpki,
+        "cppb_effective_stlb_demand_mpki": cppb_eff_mpki,
+        "tlb_rescue_effective_stlb_demand_mpki": tlb_rescue_eff_mpki,
+        "cppb_tlb_rescue_effective_stlb_demand_mpki": cppb_tlb_rescue_eff_mpki,
+        "cppb_stlb_demand_mpki_reduction_pct": reduction_pct(cppb_eff_mpki),
+        "tlb_rescue_stlb_demand_mpki_reduction_pct": reduction_pct(tlb_rescue_eff_mpki),
+        "cppb_tlb_rescue_stlb_demand_mpki_reduction_pct": reduction_pct(cppb_tlb_rescue_eff_mpki),
+    }
+
+
+def make_multi_workload_compare_rows(trace_rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    grouped: Dict[Tuple[str, str], List[Dict[str, object]]] = defaultdict(list)
+    for row in trace_rows:
+        grouped[(str(row["dataset"]), str(row["workload"]))].append(row)
+    rows = [
+        aggregate_multi_compare_rows(k[0], k[1], v)
+        for k, v in sorted(grouped.items(), key=lambda item: workload_sort_key({"dataset": item[0][0], "workload": item[0][1]}))
+    ]
+    final_rows = list(rows)
+    for dataset in DATASET_ORDER:
+        subset = [r for r in trace_rows if r["dataset"] == dataset]
+        if subset:
+            final_rows.append(aggregate_multi_compare_rows(dataset, f"gmean_{dataset}", subset))
+    final_rows.append(aggregate_multi_compare_rows("all", "gmean_all", trace_rows))
+    return final_rows
+
+
+def make_selected_trace_count_rows(trace_rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    """Report the selected trace population used by the multi-config plots.
+
+    Benchmark rows are the workload-level populations.  Suite and all rows make
+    the trace weighting behind the amean summaries explicit.
+    """
+    grouped: Dict[Tuple[str, str], List[Dict[str, object]]] = defaultdict(list)
+    for row in trace_rows:
+        grouped[(str(row["dataset"]), str(row["workload"]))].append(row)
+
+    out = [
+        {
+            "level": "benchmark",
+            "dataset": dataset,
+            "benchmark": workload,
+            "num_selected_traces": len(group),
+        }
+        for (dataset, workload), group in sorted(grouped.items(), key=lambda item: workload_sort_key({"dataset": item[0][0], "workload": item[0][1]}))
+    ]
+    for dataset in DATASET_ORDER:
+        count = sum(1 for row in trace_rows if row["dataset"] == dataset)
+        if count:
+            out.append({"level": "suite", "dataset": dataset, "benchmark": f"amean_{dataset}", "num_selected_traces": count})
+    out.append({"level": "all", "dataset": "all", "benchmark": "amean_all", "num_selected_traces": len(trace_rows)})
+    return out
+
+
+def compare_permit_multi(args: argparse.Namespace) -> None:
+    permit = read_trace_csv(pathlib.Path(args.permit_trace_csv))
+    cppb = read_trace_csv(pathlib.Path(args.cppb_trace_csv))
+    tlb_rescue = read_trace_csv(pathlib.Path(args.tlb_rescue_trace_csv))
+    cppb_tlb_rescue = read_trace_csv(pathlib.Path(args.cppb_tlb_rescue_trace_csv))
+    trace_rows = make_multi_trace_compare_rows(permit, cppb, tlb_rescue, cppb_tlb_rescue)
+    rows = make_multi_workload_compare_rows(trace_rows)
+    write_csv(pathlib.Path(args.trace_out_csv), MULTI_TRACE_COMPARE_FIELDS, trace_rows)
+    write_csv(pathlib.Path(args.out_csv), MULTI_COMPARE_FIELDS, rows)
+    if args.selected_trace_count_csv:
+        write_csv(pathlib.Path(args.selected_trace_count_csv), SELECTED_TRACE_COUNT_FIELDS, make_selected_trace_count_rows(trace_rows))
+    if args.ipc_fig_png:
+        plot_permit_multi_ipc_compare(rows, pathlib.Path(args.ipc_fig_png), pathlib.Path(args.ipc_fig_pdf))
+    if args.stlb_fig_png:
+        plot_permit_multi_stlb_reduction(rows, pathlib.Path(args.stlb_fig_png), pathlib.Path(args.stlb_fig_pdf))
+    log_info(f"multi trace compare csv: {args.trace_out_csv}")
+    log_info(f"multi compare csv: {args.out_csv}")
+    if args.selected_trace_count_csv:
+        log_info(f"selected trace-count csv: {args.selected_trace_count_csv}")
+
+
+def collect_dtlb_origin_rows(result_dir: pathlib.Path, selected_tags: set[str]) -> Dict[str, Dict[str, object]]:
+    """Read only logs with the origin-aware DTLB demand counter present."""
+    rows: Dict[str, Dict[str, object]] = {}
+    for path in sorted(result_dir.glob("*.log")):
+        row = extract_metrics_from_result(path)
+        if row is None:
+            continue
+        tag = str(row["trace_tag"])
+        if tag not in selected_tags:
+            continue
+        if finite(float(row["dtlb_demand_miss"])):
+            rows[tag] = row
+    return rows
+
+
+def make_dtlb_multi_trace_compare_rows(named: Dict[str, Dict[str, Dict[str, object]]], selected_tags: set[str]) -> List[Dict[str, object]]:
+    common_tags = set(selected_tags)
+    for config, config_rows in named.items():
+        missing = selected_tags - set(config_rows)
+        if missing:
+            log_warn(f"DTLB real-demand comparison excludes {len(missing)} selected traces without an origin-aware DTLB counter in {config}")
+        common_tags &= set(config_rows)
+    if not common_tags:
+        raise SystemExit("No common traces with origin-aware DTLB real-demand counters")
+
+    rows: List[Dict[str, object]] = []
+    for tag in sorted(common_tags):
+        p = named["permit"][tag]
+        c = named["cppb"][tag]
+        r = named["tlb_rescue"][tag]
+        cr = named["cppb_tlb_rescue"][tag]
+        p_mpki = clean_dtlb_real_demand_mpki(p)
+        c_mpki = clean_dtlb_real_demand_mpki(c)
+        r_mpki = clean_dtlb_real_demand_mpki(r)
+        cr_mpki = clean_dtlb_real_demand_mpki(cr)
+
+        def reduction_pct(value: float) -> float:
+            ratio = safe_div(value, p_mpki)
+            return (1.0 - ratio) * 100.0 if finite(ratio) else math.nan
+
+        rows.append({
+            "dataset": p["dataset"],
+            "workload": p["workload"],
+            "trace_tag": tag,
+            "permit_dtlb_real_demand_mpki": p_mpki,
+            "cppb_dtlb_real_demand_mpki": c_mpki,
+            "tlb_rescue_dtlb_real_demand_mpki": r_mpki,
+            "cppb_tlb_rescue_dtlb_real_demand_mpki": cr_mpki,
+            "cppb_dtlb_real_demand_mpki_reduction_pct": reduction_pct(c_mpki),
+            "tlb_rescue_dtlb_real_demand_mpki_reduction_pct": reduction_pct(r_mpki),
+            "cppb_tlb_rescue_dtlb_real_demand_mpki_reduction_pct": reduction_pct(cr_mpki),
+        })
+    rows.sort(key=trace_sort_key)
+    return rows
+
+
+def aggregate_dtlb_multi_compare_rows(dataset: str, workload: str, rows: List[Dict[str, object]]) -> Dict[str, object]:
+    permit_mpki = amean([float(row["permit_dtlb_real_demand_mpki"]) for row in rows])
+    cppb_mpki = amean([float(row["cppb_dtlb_real_demand_mpki"]) for row in rows])
+    rescue_mpki = amean([float(row["tlb_rescue_dtlb_real_demand_mpki"]) for row in rows])
+    combined_mpki = amean([float(row["cppb_tlb_rescue_dtlb_real_demand_mpki"]) for row in rows])
+
+    def reduction_pct(value: float) -> float:
+        ratio = safe_div(value, permit_mpki)
+        return (1.0 - ratio) * 100.0 if finite(ratio) else math.nan
+
+    return {
+        "dataset": dataset,
+        "workload": workload,
+        "num_traces": len(rows),
+        "permit_dtlb_real_demand_mpki": permit_mpki,
+        "cppb_dtlb_real_demand_mpki": cppb_mpki,
+        "tlb_rescue_dtlb_real_demand_mpki": rescue_mpki,
+        "cppb_tlb_rescue_dtlb_real_demand_mpki": combined_mpki,
+        "cppb_dtlb_real_demand_mpki_reduction_pct": reduction_pct(cppb_mpki),
+        "tlb_rescue_dtlb_real_demand_mpki_reduction_pct": reduction_pct(rescue_mpki),
+        "cppb_tlb_rescue_dtlb_real_demand_mpki_reduction_pct": reduction_pct(combined_mpki),
+    }
+
+
+def make_dtlb_multi_workload_compare_rows(trace_rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    grouped: Dict[Tuple[str, str], List[Dict[str, object]]] = defaultdict(list)
+    for row in trace_rows:
+        grouped[(str(row["dataset"]), str(row["workload"]))].append(row)
+    out = [
+        aggregate_dtlb_multi_compare_rows(dataset, workload, group)
+        for (dataset, workload), group in sorted(grouped.items(), key=lambda item: workload_sort_key({"dataset": item[0][0], "workload": item[0][1]}))
+    ]
+    for dataset in DATASET_ORDER:
+        subset = [row for row in trace_rows if row["dataset"] == dataset]
+        if subset:
+            out.append(aggregate_dtlb_multi_compare_rows(dataset, f"gmean_{dataset}", subset))
+    out.append(aggregate_dtlb_multi_compare_rows("all", "gmean_all", trace_rows))
+    return out
+
+
+def compare_permit_multi_dtlb(args: argparse.Namespace) -> None:
+    selected_tags = load_selected_tags(args.select_trace_json)
+    if selected_tags is None:
+        raise SystemExit("DTLB real-demand comparison requires an explicit selected-trace JSON")
+    named = {
+        "permit": collect_dtlb_origin_rows(pathlib.Path(args.permit_result_dir), selected_tags),
+        "cppb": collect_dtlb_origin_rows(pathlib.Path(args.cppb_result_dir), selected_tags),
+        "tlb_rescue": collect_dtlb_origin_rows(pathlib.Path(args.tlb_rescue_result_dir), selected_tags),
+        "cppb_tlb_rescue": collect_dtlb_origin_rows(pathlib.Path(args.cppb_tlb_rescue_result_dir), selected_tags),
+    }
+    trace_rows = make_dtlb_multi_trace_compare_rows(named, selected_tags)
+    rows = make_dtlb_multi_workload_compare_rows(trace_rows)
+    write_csv(pathlib.Path(args.trace_out_csv), DTLB_MULTI_TRACE_COMPARE_FIELDS, trace_rows)
+    write_csv(pathlib.Path(args.out_csv), DTLB_MULTI_COMPARE_FIELDS, rows)
+    write_csv(pathlib.Path(args.selected_trace_count_csv), SELECTED_TRACE_COUNT_FIELDS, make_selected_trace_count_rows(trace_rows))
+    plot_permit_multi_dtlb_reduction(rows, pathlib.Path(args.fig_png), pathlib.Path(args.fig_pdf))
+    log_info(f"DTLB real-demand trace compare csv: {args.trace_out_csv}")
+    log_info(f"DTLB real-demand compare csv: {args.out_csv}")
+    log_info(f"DTLB real-demand trace-count csv: {args.selected_trace_count_csv}")
 
 
 def finite_rows(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
@@ -919,6 +1359,179 @@ def plot_cppb_stlb_demand_reduction(rows: List[Dict[str, object]], fig_png: path
         fig.savefig(fig_pdf, bbox_inches="tight")
 
 
+def make_grouped_percent_bar_figure(
+    rows: List[Dict[str, object]],
+    title: str,
+    ylabel: str,
+    series: List[Tuple[str, str, str]],
+    summary_prefix: str,
+    legend_loc: str = "upper left",
+) -> object:
+    try:
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+        import matplotlib.pyplot as plt
+    except Exception as exc:
+        log_warn(f"matplotlib unavailable, skip plotting: {exc}")
+        return None
+    apply_plot_style(plt)
+    rows = sorted(rows, key=workload_sort_key)
+    labels = [plot_label(r, summary_prefix) for r in rows]
+    x = list(range(len(rows)))
+    width = min(0.24, 0.78 / max(1, len(series)))
+    offsets = [(idx - (len(series) - 1) / 2.0) * width for idx in range(len(series))]
+    all_vals = [float(r[key]) for r in rows for key, _, _ in series if finite(float(r[key]))]
+    ymin = min(-5.0, min(all_vals, default=0.0) * 1.15)
+    ymax = max(5.0, max(all_vals, default=0.0) * 1.15)
+
+    fig, ax = plt.subplots(figsize=(max(12, len(rows) * 0.64), 5.6), dpi=220)
+    for offset, (key, label, color) in zip(offsets, series):
+        vals = [float(r[key]) for r in rows]
+        ax.bar([idx + offset for idx in x], vals, color=color, width=width, label=label)
+    ax.axhline(0.0, color="black", linewidth=0.9)
+    ax.set_ylim(ymin, ymax)
+    ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel("Benchmark")
+    style_axis(ax)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.legend(loc=legend_loc, ncols=1, frameon=True, edgecolor="#b0b0b0")
+    fig.tight_layout()
+    return fig
+
+
+def plot_grouped_percent_bars(
+    rows: List[Dict[str, object]],
+    fig_png: pathlib.Path,
+    fig_pdf: pathlib.Path,
+    title: str,
+    ylabel: str,
+    series: List[Tuple[str, str, str]],
+    summary_prefix: str,
+) -> None:
+    fig = make_grouped_percent_bar_figure(rows, title, ylabel, series, summary_prefix)
+    if fig is None:
+        return
+    fig_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(fig_png, bbox_inches="tight")
+    if fig_pdf:
+        fig.savefig(fig_pdf, bbox_inches="tight")
+    try:
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+    except Exception:
+        pass
+
+
+def plot_permit_multi_three_page(
+    rows: List[Dict[str, object]],
+    fig_png: pathlib.Path,
+    fig_pdf: pathlib.Path,
+    title: str,
+    ylabel: str,
+    series: List[Tuple[str, str, str]],
+    summary_prefix: str,
+    uniform_page_title: bool = False,
+    legend_locs: Tuple[str, str, str] = ("upper left", "upper left", "upper left"),
+) -> None:
+    """Write the full, suite-summary, and compact workload views to one PDF."""
+    page_sets = [
+        (title, rows),
+        (
+            f"{title}: suite {summary_prefix} and {summary_prefix}_all",
+            [row for row in rows if str(row["workload"]).startswith("gmean_")],
+        ),
+        (
+            f"{title}: SPEC/other workloads + GAP/XSBench {summary_prefix}",
+            [
+                row
+                for row in rows
+                if str(row["workload"]).startswith("gmean_") or str(row["dataset"]) not in {"gap", "xsbench"}
+            ],
+        ),
+    ]
+    if uniform_page_title:
+        page_sets = [(title, page_rows) for _, page_rows in page_sets]
+
+    first_fig = make_grouped_percent_bar_figure(page_sets[0][1], page_sets[0][0], ylabel, series, summary_prefix, legend_locs[0])
+    if first_fig is None:
+        return
+    fig_png.parent.mkdir(parents=True, exist_ok=True)
+    first_fig.savefig(fig_png, bbox_inches="tight")
+
+    try:
+        from matplotlib.backends.backend_pdf import PdfPages
+        import matplotlib.pyplot as plt
+
+        with PdfPages(fig_pdf) as pdf:
+            pdf.savefig(first_fig, bbox_inches="tight")
+            plt.close(first_fig)
+            for page_index, (page_title, page_rows) in enumerate(page_sets[1:], start=1):
+                fig = make_grouped_percent_bar_figure(page_rows, page_title, ylabel, series, summary_prefix, legend_locs[page_index])
+                if fig is not None:
+                    pdf.savefig(fig, bbox_inches="tight")
+                    plt.close(fig)
+    except Exception as exc:
+        log_warn(f"failed to write multi-page comparison PDF: {exc}")
+        # Keep a usable one-page PDF even if PdfPages is unavailable.
+        fallback_fig = make_grouped_percent_bar_figure(page_sets[0][1], page_sets[0][0], ylabel, series, summary_prefix, legend_locs[0])
+        if fallback_fig is not None:
+            fallback_fig.savefig(fig_pdf, bbox_inches="tight")
+
+
+def plot_permit_multi_ipc_compare(rows: List[Dict[str, object]], fig_png: pathlib.Path, fig_pdf: pathlib.Path) -> None:
+    plot_permit_multi_three_page(
+        rows,
+        fig_png,
+        fig_pdf,
+        "IPC speedup over baseline",
+        "IPC speedup (%)",
+        [
+            ("cppb_ipc_speedup_pct", "CP-PB", "#4C78A8"),
+            ("tlb_rescue_ipc_speedup_pct", "TLB rescue", "#F2C14E"),
+            ("cppb_tlb_rescue_ipc_speedup_pct", "CP-PB + TLB rescue", "#59A14F"),
+        ],
+        "gmean",
+        uniform_page_title=True,
+    )
+
+
+def plot_permit_multi_stlb_reduction(rows: List[Dict[str, object]], fig_png: pathlib.Path, fig_pdf: pathlib.Path) -> None:
+    plot_permit_multi_three_page(
+        rows,
+        fig_png,
+        fig_pdf,
+        "Effective STLB data demand MPKI reduction over baseline",
+        "Reduction over baseline",
+        [
+            ("cppb_stlb_demand_mpki_reduction_pct", "CP-PB", "#4C78A8"),
+            ("tlb_rescue_stlb_demand_mpki_reduction_pct", "TLB rescue", "#F2C14E"),
+            ("cppb_tlb_rescue_stlb_demand_mpki_reduction_pct", "CP-PB + TLB rescue", "#59A14F"),
+        ],
+        "amean",
+        uniform_page_title=True,
+    )
+
+
+def plot_permit_multi_dtlb_reduction(rows: List[Dict[str, object]], fig_png: pathlib.Path, fig_pdf: pathlib.Path) -> None:
+    plot_permit_multi_three_page(
+        rows,
+        fig_png,
+        fig_pdf,
+        "DTLB data demand MPKI reduction over baseline",
+        "Reduction over baseline",
+        [
+            ("cppb_dtlb_real_demand_mpki_reduction_pct", "CP-PB", "#4C78A8"),
+            ("tlb_rescue_dtlb_real_demand_mpki_reduction_pct", "TLB rescue", "#F2C14E"),
+            ("cppb_tlb_rescue_dtlb_real_demand_mpki_reduction_pct", "CP-PB + TLB rescue", "#59A14F"),
+        ],
+        "amean",
+        uniform_page_title=True,
+        legend_locs=("lower left", "upper left", "lower left"),
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="SPEC17+GAP TLB select-trace processing")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -967,6 +1580,33 @@ def main() -> None:
     p_cppb.add_argument("--stlb-fig-png", default="")
     p_cppb.add_argument("--stlb-fig-pdf", default="")
     p_cppb.set_defaults(func=compare_permit_cppb)
+
+    p_multi = sub.add_parser("compare-permit-multi")
+    p_multi.add_argument("--permit-trace-csv", required=True)
+    p_multi.add_argument("--cppb-trace-csv", required=True)
+    p_multi.add_argument("--tlb-rescue-trace-csv", required=True)
+    p_multi.add_argument("--cppb-tlb-rescue-trace-csv", required=True)
+    p_multi.add_argument("--out-csv", required=True)
+    p_multi.add_argument("--trace-out-csv", required=True)
+    p_multi.add_argument("--selected-trace-count-csv", default="")
+    p_multi.add_argument("--ipc-fig-png", default="")
+    p_multi.add_argument("--ipc-fig-pdf", default="")
+    p_multi.add_argument("--stlb-fig-png", default="")
+    p_multi.add_argument("--stlb-fig-pdf", default="")
+    p_multi.set_defaults(func=compare_permit_multi)
+
+    p_dtlb_multi = sub.add_parser("compare-permit-multi-dtlb")
+    p_dtlb_multi.add_argument("--permit-result-dir", required=True)
+    p_dtlb_multi.add_argument("--cppb-result-dir", required=True)
+    p_dtlb_multi.add_argument("--tlb-rescue-result-dir", required=True)
+    p_dtlb_multi.add_argument("--cppb-tlb-rescue-result-dir", required=True)
+    p_dtlb_multi.add_argument("--select-trace-json", required=True)
+    p_dtlb_multi.add_argument("--out-csv", required=True)
+    p_dtlb_multi.add_argument("--trace-out-csv", required=True)
+    p_dtlb_multi.add_argument("--selected-trace-count-csv", required=True)
+    p_dtlb_multi.add_argument("--fig-png", required=True)
+    p_dtlb_multi.add_argument("--fig-pdf", required=True)
+    p_dtlb_multi.set_defaults(func=compare_permit_multi_dtlb)
 
     args = parser.parse_args()
     args.func(args)

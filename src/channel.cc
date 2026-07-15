@@ -22,7 +22,9 @@
 #include "cache.h"
 #include "champsim.h"
 #include "instruction.h"
+#include "tlb_ptw_system_stats.h"
 #include "util/to_underlying.h" // for to_underlying
+#include "vberti_end_to_end.h"
 
 champsim::channel::channel(std::size_t rq_size, std::size_t pq_size, std::size_t wq_size, champsim::data::bits offset_bits, bool match_offset)
     : RQ_SIZE(rq_size), PQ_SIZE(pq_size), WQ_SIZE(wq_size), OFFSET_BITS(offset_bits), match_offset_bits(match_offset)
@@ -60,6 +62,41 @@ template <typename Iter>
 bool do_collision_for_merge(Iter begin, Iter end, champsim::channel::request_type& packet, champsim::data::bits shamt)
 {
   return do_collision_for(begin, end, packet, shamt, [](champsim::channel::request_type& source, champsim::channel::request_type& destination) {
+    const bool source_is_data_demand = !source.is_instr && (source.type == access_type::LOAD || source.type == access_type::RFO);
+    if (destination.vberti_end_to_end_tracked && source_is_data_demand)
+      champsim::vberti_end_to_end::mark_useful(destination.vberti_end_to_end_cpu, destination.vberti_end_to_end_id, true);
+    if (source.vberti_end_to_end_tracked)
+      champsim::vberti_end_to_end::cancel(source.vberti_end_to_end_cpu, source.vberti_end_to_end_id);
+
+    const bool source_is_real_tlb_demand = source.translation_source == translation_origin::DEMAND_DATA
+                                           || source.translation_source == translation_origin::DEMAND_INSTRUCTION;
+    const bool destination_is_cross_page_prefetch = destination.translation_source == translation_origin::L1D_PREFETCH_CROSS_PAGE;
+    if (source_is_real_tlb_demand && destination.tlb_ptw_prefetch_tracked)
+      champsim::tlb_ptw_system::note_demand_for_id(destination.tlb_ptw_prefetch_cpu, destination.tlb_ptw_prefetch_id);
+    if (source_is_real_tlb_demand && destination_is_cross_page_prefetch)
+      destination.tlb_ptw_real_demand_waiting = true;
+    destination.tlb_ptw_real_demand_waiting |= source.tlb_ptw_real_demand_waiting;
+
+    if (source.demand_tlb_stage == champsim::demand_tlb_pattern_stage::L1_DTLB) {
+      champsim::demand_tlb_pattern_logger().mark_l1dtlb_rq_merge(source.demand_tlb_events);
+      champsim::demand_tlb_pattern_logger().mark_l1dtlb_rq_merge(source.demand_tlb_coalesced_events);
+      champsim::append_demand_tlb_pattern_refs(destination.demand_tlb_coalesced_events, source.demand_tlb_events);
+      champsim::append_demand_tlb_pattern_refs(destination.demand_tlb_coalesced_events, source.demand_tlb_coalesced_events);
+    } else if (source.demand_tlb_stage == champsim::demand_tlb_pattern_stage::STLB) {
+      champsim::demand_tlb_pattern_logger().mark_stlb_prelookup_merge(source.demand_tlb_events);
+      champsim::demand_tlb_pattern_logger().mark_stlb_prelookup_merge(source.demand_tlb_coalesced_events);
+    }
+
+    if (source.vberti_tlb_stage == champsim::vberti_tlb_pattern_stage::L1_DTLB) {
+      champsim::vberti_cross_page_demand_pattern_logger().mark_l1dtlb_rq_merge(source.vberti_tlb_events);
+      champsim::vberti_cross_page_demand_pattern_logger().mark_l1dtlb_rq_merge(source.vberti_tlb_coalesced_events);
+      champsim::append_vberti_tlb_pattern_refs(destination.vberti_tlb_coalesced_events, source.vberti_tlb_events);
+      champsim::append_vberti_tlb_pattern_refs(destination.vberti_tlb_coalesced_events, source.vberti_tlb_coalesced_events);
+    } else if (source.vberti_tlb_stage == champsim::vberti_tlb_pattern_stage::STLB) {
+      champsim::vberti_cross_page_demand_pattern_logger().mark_stlb_prelookup_merge(source.vberti_tlb_events);
+      champsim::vberti_cross_page_demand_pattern_logger().mark_stlb_prelookup_merge(source.vberti_tlb_coalesced_events);
+    }
+
     destination.response_requested |= source.response_requested;
     auto instr_copy = std::move(destination.instr_depend_on_me);
 
@@ -74,6 +111,9 @@ bool do_collision_for_return(Iter begin, Iter end, champsim::channel::request_ty
                              std::deque<champsim::channel::response_type>& returned)
 {
   return do_collision_for(begin, end, packet, shamt, [&](champsim::channel::request_type& source, champsim::channel::request_type& destination) {
+    if (source.vberti_end_to_end_tracked)
+      champsim::vberti_end_to_end::cancel(source.vberti_end_to_end_cpu, source.vberti_end_to_end_id);
+
     if (source.response_requested) {
       returned.emplace_back(source.address, source.v_address, destination.data, destination.pf_metadata, source.instr_depend_on_me);
     }

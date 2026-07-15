@@ -23,6 +23,8 @@ CHAMPSIM_ROOT=$(find_champsim_root "$SCRIPT_DIR") || {
 COMPARE_TAG=$(basename "$SCRIPT_DIR")
 PERMIT_TAG="pref-workload-sweep"
 CPPB_TAG="pref-cppb-workload-sweep"
+TLB_RESCUE_TAG="tlb-rescue-workload-sweep"
+CPPB_TLB_RESCUE_TAG="pref-cppb-tlb-rescue-workload-sweep"
 
 MAX_PARALLEL=${MAX_PARALLEL:-4}
 TRACE_DIRS=${TRACE_DIRS:-/data0/tzh/champsim_traces/SPEC06:/data0/tzh/champsim_traces/SPEC17:/data2/zcq/champsim_traces_gap:/data0/tzh/champsim_traces/Ligra:/data0/tzh/champsim_traces/QMM:/data0/tzh/champsim_traces/PARSEC:/data2/zcq/champsim_traces_xsbench}
@@ -36,14 +38,20 @@ FLOW_TAG=${FLOW_TAG:-}
 
 PERMIT_DIR="${SCRIPT_DIR}/${PERMIT_TAG}"
 CPPB_DIR="${SCRIPT_DIR}/${CPPB_TAG}"
+TLB_RESCUE_DIR="${SCRIPT_DIR}/${TLB_RESCUE_TAG}"
+CPPB_TLB_RESCUE_DIR="${SCRIPT_DIR}/${CPPB_TLB_RESCUE_TAG}"
 DP_DIR="${SCRIPT_DIR}/data_process_for_compare"
 SELECT_DIR="${SCRIPT_DIR}/selected_traces"
 TOOL_PY="${DP_DIR}/tlb_select_tools.py"
 
 BUILD_PERMIT="${PERMIT_DIR}/build_champsim.sh"
 BUILD_CPPB="${CPPB_DIR}/build_champsim.sh"
+BUILD_TLB_RESCUE="${TLB_RESCUE_DIR}/build_champsim.sh"
+BUILD_CPPB_TLB_RESCUE="${CPPB_TLB_RESCUE_DIR}/build_champsim.sh"
 RUN_PERMIT="${PERMIT_DIR}/launch_workload_sweep.sh"
 RUN_CPPB="${CPPB_DIR}/launch_workload_sweep.sh"
+RUN_TLB_RESCUE="${TLB_RESCUE_DIR}/launch_workload_sweep.sh"
+RUN_CPPB_TLB_RESCUE="${CPPB_TLB_RESCUE_DIR}/launch_workload_sweep.sh"
 
 default_select_trace_json() {
     case "$SELECT_SET" in
@@ -123,8 +131,12 @@ check_env() {
     require_select_trace_json >/dev/null
     ensure_exec "$BUILD_PERMIT"
     ensure_exec "$BUILD_CPPB"
+    ensure_exec "$BUILD_TLB_RESCUE"
+    ensure_exec "$BUILD_CPPB_TLB_RESCUE"
     ensure_exec "$RUN_PERMIT"
     ensure_exec "$RUN_CPPB"
+    ensure_exec "$RUN_TLB_RESCUE"
+    ensure_exec "$RUN_CPPB_TLB_RESCUE"
     ensure_exec "$TOOL_PY"
 }
 
@@ -136,6 +148,16 @@ do_build_permit() {
 do_build_cppb() {
     echo "[STEP] build permit PGC + CP-PB"
     TRACE_DIRS="$TRACE_DIRS" "$BUILD_CPPB"
+}
+
+do_build_tlb_rescue() {
+    echo "[STEP] build permit PGC + ordered TLB rescue"
+    TRACE_DIRS="$TRACE_DIRS" "$BUILD_TLB_RESCUE"
+}
+
+do_build_cppb_tlb_rescue() {
+    echo "[STEP] build permit PGC + CP-PB + ordered TLB rescue"
+    TRACE_DIRS="$TRACE_DIRS" "$BUILD_CPPB_TLB_RESCUE"
 }
 
 do_run_config() {
@@ -156,6 +178,14 @@ do_run_permit() {
 
 do_run_cppb() {
     do_run_config "$CPPB_TAG" "$RUN_CPPB" "permit PGC + CP-PB" "${1:-$MAX_PARALLEL}"
+}
+
+do_run_tlb_rescue() {
+    do_run_config "$TLB_RESCUE_TAG" "$RUN_TLB_RESCUE" "permit PGC + ordered TLB rescue" "${1:-$MAX_PARALLEL}"
+}
+
+do_run_cppb_tlb_rescue() {
+    do_run_config "$CPPB_TLB_RESCUE_TAG" "$RUN_CPPB_TLB_RESCUE" "permit PGC + CP-PB + ordered TLB rescue" "${1:-$MAX_PARALLEL}"
 }
 
 result_dir() {
@@ -208,6 +238,14 @@ do_csv_cppb() {
     do_csv_config "$CPPB_TAG" "permit_pgc_cppb" "Permit PGC + CP-PB"
 }
 
+do_csv_tlb_rescue() {
+    do_csv_config "$TLB_RESCUE_TAG" "permit_pgc_tlb_rescue" "Permit PGC + Ordered TLB Rescue"
+}
+
+do_csv_cppb_tlb_rescue() {
+    do_csv_config "$CPPB_TLB_RESCUE_TAG" "permit_pgc_cppb_tlb_rescue" "Permit PGC + CP-PB + Ordered TLB Rescue"
+}
+
 do_compare() {
     local out_dir
     out_dir="$(flow_root)/data_process_for_compare"
@@ -221,6 +259,42 @@ do_compare() {
         --ipc-fig-pdf "${out_dir}/permit_pgc_cppb_vs_permit_pgc_ipc_speedup.pdf" \
         --stlb-fig-png "${out_dir}/permit_pgc_cppb_vs_permit_pgc_stlb_demand_mpki_reduction.png" \
         --stlb-fig-pdf "${out_dir}/permit_pgc_cppb_vs_permit_pgc_stlb_demand_mpki_reduction.pdf"
+}
+
+do_compare_multi() {
+    local out_dir
+    out_dir="$(flow_root)/data_process_for_compare"
+    echo "[STEP] permit PGC baseline multi-config compare"
+    python3 "$TOOL_PY" compare-permit-multi \
+        --permit-trace-csv "$(trace_csv "$PERMIT_TAG" "permit_pgc")" \
+        --cppb-trace-csv "$(trace_csv "$CPPB_TAG" "permit_pgc_cppb")" \
+        --tlb-rescue-trace-csv "$(trace_csv "$TLB_RESCUE_TAG" "permit_pgc_tlb_rescue")" \
+        --cppb-tlb-rescue-trace-csv "$(trace_csv "$CPPB_TLB_RESCUE_TAG" "permit_pgc_cppb_tlb_rescue")" \
+        --out-csv "${out_dir}/permit_pgc_baseline_multi_compare.csv" \
+        --trace-out-csv "${out_dir}/permit_pgc_baseline_multi_trace_compare.csv" \
+        --selected-trace-count-csv "${out_dir}/permit_pgc_baseline_multi_selected_trace_count.csv" \
+        --ipc-fig-png "${out_dir}/permit_pgc_baseline_multi_ipc_compare.png" \
+        --ipc-fig-pdf "${out_dir}/permit_pgc_baseline_multi_ipc_compare.pdf" \
+        --stlb-fig-png "${out_dir}/permit_pgc_baseline_multi_stlb_demand_mpki_reduction.png" \
+        --stlb-fig-pdf "${out_dir}/permit_pgc_baseline_multi_stlb_demand_mpki_reduction.pdf"
+}
+
+do_compare_multi_dtlb() {
+    local out_dir selected
+    out_dir="$(flow_root)/data_process_for_compare"
+    selected="$(require_select_trace_json)"
+    echo "[STEP] permit PGC baseline multi-config DTLB real-demand compare"
+    python3 "$TOOL_PY" compare-permit-multi-dtlb \
+        --permit-result-dir "$(result_dir "$PERMIT_TAG")" \
+        --cppb-result-dir "$(result_dir "$CPPB_TAG")" \
+        --tlb-rescue-result-dir "$(result_dir "$TLB_RESCUE_TAG")" \
+        --cppb-tlb-rescue-result-dir "$(result_dir "$CPPB_TLB_RESCUE_TAG")" \
+        --select-trace-json "$selected" \
+        --out-csv "${out_dir}/permit_pgc_baseline_multi_dtlb_real_demand_compare.csv" \
+        --trace-out-csv "${out_dir}/permit_pgc_baseline_multi_dtlb_real_demand_trace_compare.csv" \
+        --selected-trace-count-csv "${out_dir}/permit_pgc_baseline_multi_dtlb_real_demand_selected_trace_count.csv" \
+        --fig-png "${out_dir}/permit_pgc_baseline_multi_dtlb_real_demand_mpki_reduction.png" \
+        --fig-pdf "${out_dir}/permit_pgc_baseline_multi_dtlb_real_demand_mpki_reduction.pdf"
 }
 
 show_status() {
@@ -238,6 +312,8 @@ show_status() {
     echo "FLOW_TAG      : $(effective_flow_tag)"
     echo "RESULT_PERMIT : $(result_dir "$PERMIT_TAG")"
     echo "RESULT_CPPB   : $(result_dir "$CPPB_TAG")"
+    echo "RESULT_RESCUE : $(result_dir "$TLB_RESCUE_TAG")"
+    echo "RESULT_CPPB_R : $(result_dir "$CPPB_TLB_RESCUE_TAG")"
     echo "CSV_ROOT      : $(flow_root)"
     echo "============================================================="
 }
@@ -252,27 +328,43 @@ case "$cmd" in
         check_env
         do_build_permit
         do_build_cppb
+        do_build_tlb_rescue
+        do_build_cppb_tlb_rescue
         do_run_permit "$MAX_PARALLEL"
         do_run_cppb "$MAX_PARALLEL"
+        do_run_tlb_rescue "$MAX_PARALLEL"
+        do_run_cppb_tlb_rescue "$MAX_PARALLEL"
         do_csv_permit
         do_csv_cppb
+        do_csv_tlb_rescue
+        do_csv_cppb_tlb_rescue
         do_compare
+        do_compare_multi
+        do_compare_multi_dtlb
         ;;
     build-only)
         check_env
         do_build_permit
         do_build_cppb
+        do_build_tlb_rescue
+        do_build_cppb_tlb_rescue
         ;;
     run-only)
         check_env
         do_run_permit "${2:-$MAX_PARALLEL}"
         do_run_cppb "${2:-$MAX_PARALLEL}"
+        do_run_tlb_rescue "${2:-$MAX_PARALLEL}"
+        do_run_cppb_tlb_rescue "${2:-$MAX_PARALLEL}"
         ;;
     backend|figures)
         check_env
         do_csv_permit
         do_csv_cppb
+        do_csv_tlb_rescue
+        do_csv_cppb_tlb_rescue
         do_compare
+        do_compare_multi
+        do_compare_multi_dtlb
         ;;
     compare)
         check_env
@@ -286,6 +378,14 @@ case "$cmd" in
         check_env
         do_build_cppb
         ;;
+    build-tlb-rescue|build-rescue)
+        check_env
+        do_build_tlb_rescue
+        ;;
+    build-cppb-tlb-rescue|build-cppb-rescue)
+        check_env
+        do_build_cppb_tlb_rescue
+        ;;
     run-permit|run-pref)
         check_env
         do_run_permit "${2:-$MAX_PARALLEL}"
@@ -294,6 +394,14 @@ case "$cmd" in
         check_env
         do_run_cppb "${2:-$MAX_PARALLEL}"
         ;;
+    run-tlb-rescue|run-rescue)
+        check_env
+        do_run_tlb_rescue "${2:-$MAX_PARALLEL}"
+        ;;
+    run-cppb-tlb-rescue|run-cppb-rescue)
+        check_env
+        do_run_cppb_tlb_rescue "${2:-$MAX_PARALLEL}"
+        ;;
     csv-permit|csv-pref)
         check_env
         do_csv_permit
@@ -301,6 +409,19 @@ case "$cmd" in
     csv-cppb)
         check_env
         do_csv_cppb
+        ;;
+    csv-tlb-rescue|csv-rescue)
+        check_env
+        do_csv_tlb_rescue
+        ;;
+    csv-cppb-tlb-rescue|csv-cppb-rescue)
+        check_env
+        do_csv_cppb_tlb_rescue
+        ;;
+    compare-multi)
+        check_env
+        do_compare_multi
+        do_compare_multi_dtlb
         ;;
     status)
         show_status
@@ -311,7 +432,7 @@ case "$cmd" in
         ;;
     *)
         cat <<EOF
-Usage: $0 [all|build-only|run-only|backend|compare|status|clean-csv] [MAX_PARALLEL]
+Usage: $0 [all|build-only|run-only|backend|compare|compare-multi|status|clean-csv] [MAX_PARALLEL]
 
 Common environment:
   SELECT_SET=stlb      Use STLB MPKI > 1 selected traces. This is the default.
@@ -324,6 +445,8 @@ Examples:
   N_WARM=50 N_SIM=100 $0 all 15
   SELECT_SET=llc-spec N_WARM=50 N_SIM=100 $0 all 15
   SELECT_SET=stlb $0 backend
+  $0 run-tlb-rescue 15
+  $0 run-cppb-tlb-rescue 15
 EOF
         exit 1
         ;;

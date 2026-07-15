@@ -28,6 +28,7 @@
 #include <fmt/ostream.h>
 
 #include "stats_printer.h"
+#include "tlb_ptw_system_stats.h"
 
 namespace
 {
@@ -336,8 +337,17 @@ std::vector<std::string> format_cache_metric_block(const CACHE::stats_type& stat
   lines.push_back(fmt::format("{}_prefetch_too_early_among_useless {:.6g}", label, ratio_or_zero(stats.pf_too_early, stats.pf_useless)));
   lines.push_back(fmt::format("{}_prefetch_pollution_evict {}", label, stats.pf_pollution_evict));
   lines.push_back(fmt::format("{}_prefetch_pollution_demand {}", label, stats.pf_pollution_demand));
+  if (stats.cross_page_pf_translation_only_requested > 0 || stats.cross_page_pf_translation_only_issued > 0
+      || stats.cross_page_pf_translation_only_dropped > 0) {
+    lines.push_back(fmt::format("{}_cross_page_pf_translation_only_requested {}", label, stats.cross_page_pf_translation_only_requested));
+    lines.push_back(fmt::format("{}_cross_page_pf_translation_only_issued {}", label, stats.cross_page_pf_translation_only_issued));
+    lines.push_back(fmt::format("{}_cross_page_pf_translation_only_dropped {}", label, stats.cross_page_pf_translation_only_dropped));
+  }
   lines.push_back(fmt::format("{}_prefetch_pollution_among_prefetch_fill {:.6g}", label, ratio_or_zero(stats.pf_pollution_evict, stats.pf_fill)));
   lines.push_back(fmt::format("{}_prefetch_accuracy {:.6g}", label, ratio_or_zero(stats.pf_useful, stats.pf_issued)));
+  if (stats.name.size() >= 4 && stats.name.compare(stats.name.size() - 4, 4, "_L1D") == 0)
+    lines.push_back(fmt::format("{}_prefetch_accuracy_berti_artifact {:.6g}", label,
+                                ratio_or_zero(stats.pf_useful, stats.pf_useful + stats.pf_useless)));
   lines.push_back(fmt::format("{}_prefetch_coverage {:.6g}", label, ratio_or_zero(stats.pf_useful, stats.pf_useful + demand_miss)));
 
   return lines;
@@ -549,6 +559,7 @@ std::vector<std::string> format_vberti_tlb_cross_page_flow_stats(const std::map<
     const auto dropped = requested > issued ? requested - issued : 0;
     const auto cross_dropped = cross_requested > cross_issued ? cross_requested - cross_issued : 0;
     const auto same_requested = requested > cross_requested ? requested - cross_requested : 0;
+    const auto same_issued = issued > cross_issued ? issued - cross_issued : 0;
 
     lines.emplace_back("");
     lines.push_back(fmt::format("Core_{}_vBerti_Requested {}", cpu_idx, requested));
@@ -556,10 +567,16 @@ std::vector<std::string> format_vberti_tlb_cross_page_flow_stats(const std::map<
     lines.push_back(fmt::format("Core_{}_vBerti_Same_page_prefetch_in_Requested {}", cpu_idx, same_requested));
     lines.push_back(fmt::format("Core_{}_vBerti_Cross_page_prefetch_of_Requested {:.6g}", cpu_idx, ratio_or_zero(cross_requested, requested)));
     lines.push_back(fmt::format("Core_{}_vBerti_Issued {}", cpu_idx, issued));
+    lines.push_back(fmt::format("Core_{}_vBerti_InPQ_Same_page_prefetch {}", cpu_idx, same_issued));
+    lines.push_back(fmt::format("Core_{}_vBerti_InPQ_Cross_page_prefetch {}", cpu_idx, cross_issued));
     lines.push_back(fmt::format("Core_{}_vBerti_PQ_Drop_Rate {:.6g}", cpu_idx, ratio_or_zero(dropped, requested)));
     lines.push_back(fmt::format("Core_{}_vBerti_InPQ_Cross_page_prefetch_of_Requested {:.6g}", cpu_idx, ratio_or_zero(cross_issued, requested)));
     lines.push_back(fmt::format("Core_{}_vBerti_Cross_page_PQ_Drop_rate {:.6g}", cpu_idx, ratio_or_zero(cross_dropped, cross_requested)));
     lines.push_back(fmt::format("Core_{}_vBerti_Cross_page_prefetch_of_Issued {:.6g}", cpu_idx, ratio_or_zero(cross_issued, issued)));
+    lines.push_back(fmt::format("Core_{}_CP_PF_PQFULL_drop {}", cpu_idx, l1d->second.cp_pf_pqfull_drop));
+    lines.push_back(fmt::format("Core_{}_CP_PF_PQFULL_TLB_rescue_enqueued {}", cpu_idx, l1d->second.cp_pf_pqfull_tlb_rescue_enqueued));
+    lines.push_back(fmt::format("Core_{}_CP_PF_PQFULL_TLB_rescue_issued {}", cpu_idx, l1d->second.cp_pf_pqfull_tlb_rescue_issued));
+    lines.push_back(fmt::format("Core_{}_CP_PF_PQFULL_TLB_rescue_translated {}", cpu_idx, l1d->second.cp_pf_pqfull_tlb_rescue_translated));
 
     const auto dtlb_counts = get_dtlb_origin_counts(dtlb->second, cpu_idx);
     const auto stlb_counts = get_stlb_origin_counts(stlb->second, cpu_idx);
@@ -606,6 +623,29 @@ std::vector<std::string> format_vberti_tlb_cross_page_flow_stats(const std::map<
     lines.emplace_back("");
     append_tlb_quality_metrics(lines, fmt::format("Core_{}_TLB", cpu_idx), system_counts, instrs, system_issued, system_useful, system_useless,
                                system_late, system_too_early);
+
+    const auto ptw_system = champsim::tlb_ptw_system::get_counters(static_cast<uint32_t>(cpu_idx));
+    const auto timely = ptw_system.prefetch_useful >= ptw_system.prefetch_late ? ptw_system.prefetch_useful - ptw_system.prefetch_late : 0;
+    const auto demand_opportunities = ptw_system.prefetch_useful + ptw_system.real_demand_ptw;
+    lines.emplace_back("");
+    lines.emplace_back("========= PTW-derived TLB-System Prefetch Stats =========");
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_real_demand_ptw {}", cpu_idx, ptw_system.real_demand_ptw));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_real_demand_mpki {:.6g}", cpu_idx,
+                                ratio_or_zero(ptw_system.real_demand_ptw * 1000.0, instrs)));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_cross_page_prefetch_issued {}", cpu_idx, system_issued));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_cross_page_prefetch_ptw_started {}", cpu_idx, ptw_system.prefetch_ptw_started));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_cross_page_prefetch_fill {}", cpu_idx, ptw_system.prefetch_fill));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_cross_page_prefetch_useful {}", cpu_idx, ptw_system.prefetch_useful));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_cross_page_prefetch_late {}", cpu_idx, ptw_system.prefetch_late));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_cross_page_prefetch_timely {}", cpu_idx, timely));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_cross_page_prefetch_fill_accuracy {:.6g}", cpu_idx,
+                                ratio_or_zero(ptw_system.prefetch_useful, ptw_system.prefetch_fill)));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_cross_page_prefetch_end_to_end_yield {:.6g}", cpu_idx,
+                                ratio_or_zero(ptw_system.prefetch_useful, system_issued)));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_cross_page_prefetch_coverage {:.6g}", cpu_idx,
+                                ratio_or_zero(ptw_system.prefetch_useful, demand_opportunities)));
+    lines.push_back(fmt::format("Core_{}_TLB_PTW_cross_page_prefetch_timely_coverage {:.6g}", cpu_idx,
+                                ratio_or_zero(timely, demand_opportunities)));
   }
 
   return lines;

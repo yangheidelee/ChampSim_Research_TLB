@@ -28,6 +28,7 @@
 #include "core_inst.inc"
 #endif
 #include "defaults.hpp"
+#include "demand_tlb_pattern.h"
 #include "dpc_api.h"
 #include "environment.h"
 #include "ooo_cpu.h" // for O3_CPU
@@ -52,6 +53,7 @@ const unsigned PAGE_SIZE = configured_environment::page_size;
 const unsigned LOG2_BLOCK_SIZE = champsim::lg2(BLOCK_SIZE);
 const unsigned LOG2_PAGE_SIZE = champsim::lg2(PAGE_SIZE);
 
+#ifndef CHAMPSIM_TEST_BUILD
 // Singleton environment pointer
 static configured_environment* g_env;
 
@@ -71,7 +73,6 @@ long long get_retired_insts(uint8_t cpu_id)
   return cpu.num_retired;
 }
 
-#ifndef CHAMPSIM_TEST_BUILD
 int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 {
   configured_environment gen_environment{};
@@ -85,10 +86,20 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   std::vector<std::string> trace_names;
   bool hide_heartbeat{false};
   long long heartbeat_interval = 500000;
+  bool demand_tlb_pattern = false;
+  std::string demand_tlb_pattern_output = "demand_tlb_pattern";
+  uint64_t demand_tlb_pattern_max_events = 0;
 
   app.add_flag("-c,--cloudsuite", knob_cloudsuite, "Read all traces using the cloudsuite format");
   app.add_flag("--hide-heartbeat", hide_heartbeat, "Hide the heartbeat output");
   app.add_flag("--enable-stlb-cp-pb", champsim::enable_stlb_cp_pb, "Enable the STLB cross-page prefetch buffer experiment");
+  app.add_flag("--ordered-pqfull-tlb-rescue", champsim::ordered_pqfull_tlb_rescue, "Enable ordered translation-only rescue for PQ-full L1D cross-page prefetches");
+  app.add_flag("--l1d-cross-page-pf-translation-only", champsim::l1d_cross_page_pf_translation_only,
+               "Translate vBerti L1D cross-page prefetches but suppress their data-cache accesses");
+  app.add_flag("--demand-tlb-pattern", demand_tlb_pattern, "Record the ROI demand-load L1 DTLB request pattern");
+  app.add_option("--demand-tlb-pattern-output", demand_tlb_pattern_output, "Output directory for demand-load TLB pattern files");
+  app.add_option("--demand-tlb-pattern-max-events", demand_tlb_pattern_max_events,
+                 "Maximum demand-load TLB pattern events per core; zero means unlimited");
   app.add_option("--heartbeat-interval", heartbeat_interval, "The frequency of printing heartbeat");
   auto* warmup_instr_option = app.add_option("-w,--warmup-instructions", warmup_instructions, "The number of instructions in the warmup phase");
   auto* deprec_warmup_instr_option =
@@ -128,6 +139,18 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
     // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
     warmup_instructions = simulation_instructions / 5;
   }
+
+  champsim::demand_tlb_pattern_config demand_pattern_config;
+  demand_pattern_config.enabled = demand_tlb_pattern;
+  demand_pattern_config.output_directory = demand_tlb_pattern_output;
+  demand_pattern_config.max_events_per_core = demand_tlb_pattern_max_events;
+  demand_pattern_config.page_size = PAGE_SIZE;
+  demand_pattern_config.num_cores = NUM_CPUS;
+  demand_pattern_config.warmup_instructions = static_cast<uint64_t>(warmup_instructions);
+  demand_pattern_config.simulation_instructions = static_cast<uint64_t>(simulation_instructions);
+  demand_pattern_config.trace_names = trace_names;
+  demand_pattern_config.executable_name = argv[0];
+  champsim::demand_tlb_pattern_logger().configure(std::move(demand_pattern_config));
 
   std::vector<champsim::tracereader> traces;
   std::transform(

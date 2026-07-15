@@ -29,6 +29,18 @@ struct cache_stats {
   uint64_t vberti_prefetch_issued = 0;
   uint64_t vberti_cross_page_issued = 0;
 
+  // vBerti cross-page requests that execute translation but are removed before
+  // they can access the data-cache hierarchy.
+  uint64_t cross_page_pf_translation_only_requested = 0;
+  uint64_t cross_page_pf_translation_only_issued = 0;
+  uint64_t cross_page_pf_translation_only_dropped = 0;
+
+  // Ordered PQ-full TLB rescue experiment for vBerti cross-page prefetches.
+  uint64_t cp_pf_pqfull_drop = 0;
+  uint64_t cp_pf_pqfull_tlb_rescue_enqueued = 0;
+  uint64_t cp_pf_pqfull_tlb_rescue_issued = 0;
+  uint64_t cp_pf_pqfull_tlb_rescue_translated = 0;
+
   // Cross-page L1D prefetch translation quality at a single TLB level.
   uint64_t tlb_cross_prefetch_issued = 0;
   uint64_t tlb_cross_prefetch_useful = 0;

@@ -76,6 +76,13 @@ class CACHE : public champsim::operable
 
     uint32_t pf_metadata;
     uint32_t cpu;
+    uint32_t demand_tlb_operand_index = std::numeric_limits<uint32_t>::max();
+    champsim::demand_tlb_pattern_stage demand_tlb_stage = champsim::demand_tlb_pattern_stage::NONE;
+    std::vector<champsim::demand_tlb_pattern_event_ref> demand_tlb_events{};
+    std::vector<champsim::demand_tlb_pattern_event_ref> demand_tlb_coalesced_events{};
+    champsim::vberti_tlb_pattern_stage vberti_tlb_stage = champsim::vberti_tlb_pattern_stage::NONE;
+    std::vector<champsim::vberti_tlb_pattern_event_ref> vberti_tlb_events{};
+    std::vector<champsim::vberti_tlb_pattern_event_ref> vberti_tlb_coalesced_events{};
 
     access_type type;
     translation_origin translation_source = translation_origin::OTHER;
@@ -84,6 +91,17 @@ class CACHE : public champsim::operable
     bool is_translated;
     bool translate_issued = false;
     bool is_instr = false;
+    bool has_l1d_prefetch_seq = false;
+    bool translation_only_rescue = false;
+    uint64_t l1d_prefetch_seq = 0;
+    bool vberti_end_to_end_tracked = false;
+    uint32_t vberti_end_to_end_cpu = std::numeric_limits<uint32_t>::max();
+    uint64_t vberti_end_to_end_id = 0;
+
+    bool tlb_ptw_prefetch_tracked = false;
+    bool tlb_ptw_real_demand_waiting = false;
+    uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
+    uint64_t tlb_ptw_prefetch_id = 0;
 
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
 
@@ -115,6 +133,14 @@ public:
     translation_origin translation_source = translation_origin::OTHER;
     bool prefetch_from_this;
     bool is_instr = false;
+    bool vberti_end_to_end_tracked = false;
+    uint32_t vberti_end_to_end_cpu = std::numeric_limits<uint32_t>::max();
+    uint64_t vberti_end_to_end_id = 0;
+
+    bool tlb_ptw_prefetch_tracked = false;
+    bool tlb_ptw_real_demand_waiting = false;
+    uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
+    uint64_t tlb_ptw_prefetch_id = 0;
 
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
 
@@ -148,6 +174,9 @@ private:
     uint32_t pf_metadata = 0;
     uint32_t cpu = 0;
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
+    bool tlb_ptw_prefetch_tracked = false;
+    uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
+    uint64_t tlb_ptw_prefetch_id = 0;
   };
 
   struct prefetch_too_early_key {
@@ -170,8 +199,14 @@ private:
   bool handle_write(const tag_lookup_type& handle_pkt);
   void finish_packet(const response_type& packet);
   void finish_translation(const response_type& packet);
+  void finish_pqfull_tlb_rescue_translation(const response_type& packet);
+
+  [[nodiscard]] bool should_drop_l1d_cross_page_translation_only(const tag_lookup_type& handle_pkt) const;
+  std::size_t drop_translated_l1d_cross_page_translation_only(std::deque<tag_lookup_type>& queue);
 
   void issue_translation(tag_lookup_type& q_entry) const;
+  [[nodiscard]] bool pqfull_tlb_rescue_can_issue() const;
+  long issue_pqfull_tlb_rescue();
   [[nodiscard]] translation_origin classify_translation_origin(const tag_lookup_type& q_entry) const;
   [[nodiscard]] bool is_dtlb() const;
   [[nodiscard]] bool is_stlb() const;
@@ -199,6 +234,9 @@ private:
   void record_tlb_cross_prefetch_eviction(const champsim::cache_block& victim, uint32_t cpu);
   void record_tlb_cross_prefetch_hit(const tag_lookup_type& handle_pkt, champsim::cache_block& way);
   void record_tlb_cross_prefetch_miss(const tag_lookup_type& handle_pkt, bool new_mshr);
+  void record_tlb_ptw_system_fill(const mshr_type& fill_mshr, champsim::cache_block& way);
+  void record_tlb_ptw_system_eviction(const champsim::cache_block& victim);
+  void record_tlb_ptw_system_hit(const tag_lookup_type& handle_pkt, const champsim::cache_block& way);
   void finalize_tlb_cross_prefetch_stats();
   [[nodiscard]] bool should_redirect_stlb_cp_pb_fill(const mshr_type& fill_mshr) const;
   void insert_stlb_cp_pb(const mshr_type& fill_mshr);
@@ -237,6 +275,11 @@ private:
   std::deque<tag_lookup_type> internal_PQ{};
   std::deque<tag_lookup_type> inflight_tag_check{};
   std::deque<tag_lookup_type> translation_stash{};
+  std::deque<tag_lookup_type> pqfull_tlb_rescue_queue{};
+  std::deque<tag_lookup_type> pqfull_tlb_rescue_inflight{};
+  uint64_t vberti_prefetch_seq_counter = 0;
+  uint64_t vberti_end_to_end_id_counter = 0;
+  bool vberti_end_to_end_roi_started = false;
   std::map<tlb_prefetch_key, uint64_t> tlb_cross_prefetch_pending{};
   std::deque<prefetch_too_early_key> prefetch_too_early_fifo{};
   std::map<prefetch_too_early_key, uint64_t> prefetch_too_early_shadow{};

@@ -35,6 +35,8 @@ extern const unsigned LOG2_PAGE_SIZE;
 namespace champsim
 {
 extern bool enable_stlb_cp_pb;
+extern bool ordered_pqfull_tlb_rescue;
+extern bool l1d_cross_page_pf_translation_only;
 
 struct deadlock : public std::exception {
   const uint32_t which;

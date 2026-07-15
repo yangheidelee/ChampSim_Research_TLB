@@ -20,6 +20,7 @@
 #include <cassert>
 #include <cmath>
 #include <iomanip>
+#include <limits>
 #include <numeric>
 #include <fmt/core.h>
 
@@ -29,18 +30,24 @@
 #include "deadlock.h"
 #include "instruction.h"
 #include "tlb_prefetch_metadata.h"
+#include "tlb_ptw_system_stats.h"
 #include "util/algorithm.h"
 #include "util/bits.h"
 #include "util/span.h"
+#include "vberti_end_to_end.h"
 #include "vpn_pattern_tracker.h"
 
 namespace champsim
 {
 bool enable_stlb_cp_pb = false;
+bool ordered_pqfull_tlb_rescue = false;
+bool l1d_cross_page_pf_translation_only = false;
 }
 
 namespace
 {
+constexpr std::size_t PQFULL_TLB_RESCUE_QUEUE_SIZE = 16;
+
 void append_ptw_dram_touched_flags(std::vector<std::shared_ptr<bool>>& destination, const std::vector<std::shared_ptr<bool>>& source)
 {
   for (const auto& flag : source) {
@@ -59,7 +66,31 @@ bool is_data_demand_origin(translation_origin origin) { return origin == transla
 
 bool is_l1d_cross_page_prefetch_origin(translation_origin origin) { return origin == translation_origin::L1D_PREFETCH_CROSS_PAGE; }
 
+champsim::dtlb_merge_detail classify_tlb_mshr_merge_target(translation_origin origin)
+{
+  switch (origin) {
+  case translation_origin::DEMAND_DATA:
+    return champsim::dtlb_merge_detail::MSHR_TO_DATA_DEMAND;
+  case translation_origin::DEMAND_INSTRUCTION:
+    return champsim::dtlb_merge_detail::MSHR_TO_INST_DEMAND;
+  case translation_origin::L1D_PREFETCH:
+    return champsim::dtlb_merge_detail::MSHR_TO_L1D_PREFETCH;
+  case translation_origin::L1D_PREFETCH_CROSS_PAGE:
+    return champsim::dtlb_merge_detail::MSHR_TO_CP_PREFETCH;
+  case translation_origin::L1D_PREFETCH_SAME_PAGE:
+    return champsim::dtlb_merge_detail::MSHR_TO_SP_PREFETCH;
+  case translation_origin::L1I_PREFETCH:
+    return champsim::dtlb_merge_detail::MSHR_TO_L1I_PREFETCH;
+  case translation_origin::OTHER:
+  case translation_origin::NUM_TYPES:
+  default:
+    return champsim::dtlb_merge_detail::MSHR_TO_OTHER;
+  }
+}
+
 bool is_cache_demand_type(access_type type) { return type == access_type::LOAD || type == access_type::RFO; }
+
+bool is_l1d_name(std::string_view name) { return name.size() >= 4 && name.compare(name.size() - 4, 4, "_L1D") == 0; }
 
 template <typename Key>
 void remember_shadow_candidate(std::deque<Key>& fifo, std::map<Key, uint64_t>& shadow, const Key& key, std::size_t limit)
@@ -246,6 +277,9 @@ uint64_t finalize_tlb_system_cross_prefetch_state()
 CACHE::CACHE(CACHE&& other)
     : operable(other),
 
+      pqfull_tlb_rescue_queue(std::move(other.pqfull_tlb_rescue_queue)), pqfull_tlb_rescue_inflight(std::move(other.pqfull_tlb_rescue_inflight)),
+      vberti_prefetch_seq_counter(other.vberti_prefetch_seq_counter), vberti_end_to_end_id_counter(other.vberti_end_to_end_id_counter),
+      vberti_end_to_end_roi_started(other.vberti_end_to_end_roi_started),
       stlb_cp_pb(std::move(other.stlb_cp_pb)),
 
       upper_levels(std::move(other.upper_levels)), lower_level(std::move(other.lower_level)), lower_translate(std::move(other.lower_translate)),
@@ -292,6 +326,11 @@ auto CACHE::operator=(CACHE&& other) -> CACHE&
   this->match_offset_bits = other.match_offset_bits;
   this->virtual_prefetch = other.virtual_prefetch;
   this->pref_activate_mask = std::move(other.pref_activate_mask);
+  this->pqfull_tlb_rescue_queue = std::move(other.pqfull_tlb_rescue_queue);
+  this->pqfull_tlb_rescue_inflight = std::move(other.pqfull_tlb_rescue_inflight);
+  this->vberti_prefetch_seq_counter = other.vberti_prefetch_seq_counter;
+  this->vberti_end_to_end_id_counter = other.vberti_end_to_end_id_counter;
+  this->vberti_end_to_end_roi_started = other.vberti_end_to_end_roi_started;
   this->stlb_cp_pb = std::move(other.stlb_cp_pb);
 
   this->sim_stats = std::move(other.sim_stats);
@@ -308,14 +347,26 @@ auto CACHE::operator=(CACHE&& other) -> CACHE&
 
 CACHE::tag_lookup_type::tag_lookup_type(const request_type& req, bool local_pref, bool skip)
     : address(req.address), v_address(req.v_address), data(req.data), ip(req.ip), instr_id(req.instr_id), pf_metadata(req.pf_metadata), cpu(req.cpu),
+      demand_tlb_operand_index(req.demand_tlb_operand_index), demand_tlb_stage(req.demand_tlb_stage), demand_tlb_events(req.demand_tlb_events),
+      demand_tlb_coalesced_events(req.demand_tlb_coalesced_events),
+      vberti_tlb_stage(req.vberti_tlb_stage), vberti_tlb_events(req.vberti_tlb_events),
+      vberti_tlb_coalesced_events(req.vberti_tlb_coalesced_events),
       type(req.type), translation_source(req.translation_source), prefetch_from_this(local_pref), skip_fill(skip), is_translated(req.is_translated), is_instr(req.is_instr),
+      vberti_end_to_end_tracked(req.vberti_end_to_end_tracked), vberti_end_to_end_cpu(req.vberti_end_to_end_cpu),
+      vberti_end_to_end_id(req.vberti_end_to_end_id),
+      tlb_ptw_prefetch_tracked(req.tlb_ptw_prefetch_tracked), tlb_ptw_real_demand_waiting(req.tlb_ptw_real_demand_waiting),
+      tlb_ptw_prefetch_cpu(req.tlb_ptw_prefetch_cpu), tlb_ptw_prefetch_id(req.tlb_ptw_prefetch_id),
       instr_depend_on_me(req.instr_depend_on_me), ptw_dram_touched_flags(req.ptw_dram_touched_flags)
 {
 }
 
 CACHE::mshr_type::mshr_type(const tag_lookup_type& req, champsim::chrono::clock::time_point _time_enqueued)
     : address(req.address), v_address(req.v_address), ip(req.ip), instr_id(req.instr_id), cpu(req.cpu), type(req.type),
-      translation_source(req.translation_source), prefetch_from_this(req.prefetch_from_this), is_instr(req.is_instr), time_enqueued(_time_enqueued),
+      translation_source(req.translation_source), prefetch_from_this(req.prefetch_from_this), is_instr(req.is_instr),
+      vberti_end_to_end_tracked(req.vberti_end_to_end_tracked), vberti_end_to_end_cpu(req.vberti_end_to_end_cpu),
+      vberti_end_to_end_id(req.vberti_end_to_end_id), tlb_ptw_prefetch_tracked(req.tlb_ptw_prefetch_tracked),
+      tlb_ptw_real_demand_waiting(req.tlb_ptw_real_demand_waiting), tlb_ptw_prefetch_cpu(req.tlb_ptw_prefetch_cpu),
+      tlb_ptw_prefetch_id(req.tlb_ptw_prefetch_id), time_enqueued(_time_enqueued),
       instr_depend_on_me(req.instr_depend_on_me), ptw_dram_touched_flags(req.ptw_dram_touched_flags), to_return(req.to_return)
 {
 }
@@ -338,6 +389,14 @@ CACHE::mshr_type CACHE::mshr_type::merge(mshr_type predecessor, mshr_type succes
   retval.instr_depend_on_me = merged_instr;
   retval.to_return = merged_return;
   retval.data_promise = predecessor.data_promise;
+  retval.vberti_end_to_end_tracked = predecessor.vberti_end_to_end_tracked;
+  retval.vberti_end_to_end_cpu = predecessor.vberti_end_to_end_cpu;
+  retval.vberti_end_to_end_id = predecessor.vberti_end_to_end_id;
+  const auto& ptw_provenance = predecessor.tlb_ptw_prefetch_tracked ? predecessor : successor;
+  retval.tlb_ptw_prefetch_tracked = ptw_provenance.tlb_ptw_prefetch_tracked;
+  retval.tlb_ptw_prefetch_cpu = ptw_provenance.tlb_ptw_prefetch_cpu;
+  retval.tlb_ptw_prefetch_id = ptw_provenance.tlb_ptw_prefetch_id;
+  retval.tlb_ptw_real_demand_waiting = predecessor.tlb_ptw_real_demand_waiting || successor.tlb_ptw_real_demand_waiting;
   retval.ptw_dram_touched_flags = predecessor.ptw_dram_touched_flags;
   append_ptw_dram_touched_flags(retval.ptw_dram_touched_flags, successor.ptw_dram_touched_flags);
 
@@ -372,6 +431,12 @@ auto CACHE::fill_block(mshr_type mshr, uint32_t metadata) -> BLOCK
   to_fill.cpu = mshr.cpu;
   to_fill.asid[0] = mshr.asid[0];
   to_fill.asid[1] = mshr.asid[1];
+  to_fill.vberti_end_to_end_tracked = mshr.vberti_end_to_end_tracked;
+  to_fill.vberti_end_to_end_cpu = mshr.vberti_end_to_end_cpu;
+  to_fill.vberti_end_to_end_id = mshr.vberti_end_to_end_id;
+  to_fill.tlb_ptw_prefetch_tracked = mshr.tlb_ptw_prefetch_tracked;
+  to_fill.tlb_ptw_prefetch_cpu = mshr.tlb_ptw_prefetch_cpu;
+  to_fill.tlb_ptw_prefetch_id = mshr.tlb_ptw_prefetch_id;
   to_fill.translation_source = mshr.translation_source;
   to_fill.tlb_cross_prefetch = false;
   to_fill.tlb_cross_prefetch_used = false;
@@ -412,6 +477,9 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
 
     response_type response{fill_mshr.address, fill_mshr.v_address, fill_mshr.data_promise->data, fill_mshr.data_promise->pf_metadata,
                            fill_mshr.instr_depend_on_me};
+    response.tlb_ptw_prefetch_tracked = fill_mshr.tlb_ptw_prefetch_tracked;
+    response.tlb_ptw_prefetch_cpu = fill_mshr.tlb_ptw_prefetch_cpu;
+    response.tlb_ptw_prefetch_id = fill_mshr.tlb_ptw_prefetch_id;
     for (auto* ret : fill_mshr.to_return) {
       ret->push_back(response);
     }
@@ -483,6 +551,7 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
       ++sim_stats.pf_useless;
     }
     if (way->valid) {
+      record_tlb_ptw_system_eviction(*way);
       record_tlb_cross_prefetch_eviction(*way, way->cpu);
     }
 
@@ -504,6 +573,7 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
     if (is_tlb())
       sim_stats.tlb_origin_fills.increment(std::pair{fill_mshr.translation_source, fill_mshr.cpu});
     way->tlb_cross_prefetch = record_tlb_cross_prefetch_fill(fill_mshr);
+    record_tlb_ptw_system_fill(fill_mshr, *way);
   }
 
   // COLLECT STATS
@@ -512,6 +582,9 @@ bool CACHE::handle_fill(const mshr_type& fill_mshr)
   sim_stats.mshr_return.increment(std::pair{fill_mshr.type, fill_mshr.cpu});
 
   response_type response{fill_mshr.address, fill_mshr.v_address, fill_mshr.data_promise->data, metadata_thru, fill_mshr.instr_depend_on_me};
+  response.tlb_ptw_prefetch_tracked = fill_mshr.tlb_ptw_prefetch_tracked;
+  response.tlb_ptw_prefetch_cpu = fill_mshr.tlb_ptw_prefetch_cpu;
+  response.tlb_ptw_prefetch_id = fill_mshr.tlb_ptw_prefetch_id;
   for (auto* ret : fill_mshr.to_return) {
     ret->push_back(response);
   }
@@ -546,13 +619,32 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
                                 hit);
 
   if (hit) {
+    if (is_dtlb()) {
+      champsim::demand_tlb_pattern_logger().mark_l1dtlb_hit(handle_pkt.demand_tlb_events, false);
+      champsim::demand_tlb_pattern_logger().mark_l1dtlb_hit(handle_pkt.demand_tlb_coalesced_events, true);
+      champsim::vberti_cross_page_demand_pattern_logger().mark_l1dtlb_hit(handle_pkt.vberti_tlb_events, false);
+      champsim::vberti_cross_page_demand_pattern_logger().mark_l1dtlb_hit(handle_pkt.vberti_tlb_coalesced_events, true);
+    } else if (is_stlb()) {
+      champsim::demand_tlb_pattern_logger().mark_stlb_hit(handle_pkt.demand_tlb_events);
+      champsim::vberti_cross_page_demand_pattern_logger().mark_stlb_hit(handle_pkt.vberti_tlb_events);
+    }
+
+    if (handle_pkt.vberti_end_to_end_tracked)
+      champsim::vberti_end_to_end::cancel(handle_pkt.vberti_end_to_end_cpu, handle_pkt.vberti_end_to_end_id);
+    if (!handle_pkt.is_instr && is_cache_demand_type(handle_pkt.type) && way->vberti_end_to_end_tracked)
+      champsim::vberti_end_to_end::mark_useful(way->vberti_end_to_end_cpu, way->vberti_end_to_end_id, false);
+
     sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
     discard_prefetch_too_early_candidate(handle_pkt);
     discard_prefetch_pollution_candidate(handle_pkt);
+    record_tlb_ptw_system_hit(handle_pkt, *way);
     record_tlb_cross_prefetch_hit(handle_pkt, *way);
     record_tlb_origin_hit(handle_pkt);
 
     response_type response{handle_pkt.address, handle_pkt.v_address, way->data, metadata_thru, handle_pkt.instr_depend_on_me};
+    response.tlb_ptw_prefetch_tracked = way->tlb_ptw_prefetch_tracked;
+    response.tlb_ptw_prefetch_cpu = way->tlb_ptw_prefetch_cpu;
+    response.tlb_ptw_prefetch_id = way->tlb_ptw_prefetch_id;
     for (auto* ret : handle_pkt.to_return) {
       ret->push_back(response);
     }
@@ -581,6 +673,14 @@ auto CACHE::mshr_and_forward_packet(const tag_lookup_type& handle_pkt) -> std::p
   fwd_pkt.translation_source = handle_pkt.translation_source;
   fwd_pkt.pf_metadata = handle_pkt.pf_metadata;
   fwd_pkt.cpu = handle_pkt.cpu;
+  fwd_pkt.demand_tlb_operand_index = handle_pkt.demand_tlb_operand_index;
+  fwd_pkt.vberti_end_to_end_tracked = handle_pkt.vberti_end_to_end_tracked;
+  fwd_pkt.vberti_end_to_end_cpu = handle_pkt.vberti_end_to_end_cpu;
+  fwd_pkt.vberti_end_to_end_id = handle_pkt.vberti_end_to_end_id;
+  fwd_pkt.tlb_ptw_prefetch_tracked = handle_pkt.tlb_ptw_prefetch_tracked;
+  fwd_pkt.tlb_ptw_real_demand_waiting = handle_pkt.tlb_ptw_real_demand_waiting;
+  fwd_pkt.tlb_ptw_prefetch_cpu = handle_pkt.tlb_ptw_prefetch_cpu;
+  fwd_pkt.tlb_ptw_prefetch_id = handle_pkt.tlb_ptw_prefetch_id;
 
   fwd_pkt.address = handle_pkt.address;
   fwd_pkt.v_address = handle_pkt.v_address;
@@ -593,6 +693,15 @@ auto CACHE::mshr_and_forward_packet(const tag_lookup_type& handle_pkt) -> std::p
   fwd_pkt.ptw_dram_touched_flags = handle_pkt.ptw_dram_touched_flags;
   fwd_pkt.count_ptw_dram_touch = is_stlb() && !warmup;
   fwd_pkt.response_requested = (!handle_pkt.prefetch_from_this || !handle_pkt.skip_fill);
+
+  if (is_dtlb() && !handle_pkt.demand_tlb_events.empty()) {
+    fwd_pkt.demand_tlb_stage = champsim::demand_tlb_pattern_stage::STLB;
+    fwd_pkt.demand_tlb_events = handle_pkt.demand_tlb_events;
+  }
+  if (is_dtlb() && !handle_pkt.vberti_tlb_events.empty()) {
+    fwd_pkt.vberti_tlb_stage = champsim::vberti_tlb_pattern_stage::STLB;
+    fwd_pkt.vberti_tlb_events = handle_pkt.vberti_tlb_events;
+  }
 
   return std::pair{std::move(to_allocate), std::move(fwd_pkt)};
 }
@@ -609,8 +718,13 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
 
   cpu = handle_pkt.cpu;
 
-  if (try_stlb_cp_pb_demand_hit(handle_pkt))
+  if (try_stlb_cp_pb_demand_hit(handle_pkt)) {
+    if (is_stlb()) {
+      champsim::demand_tlb_pattern_logger().mark_stlb_miss(handle_pkt.demand_tlb_events, false);
+      champsim::vberti_cross_page_demand_pattern_logger().mark_stlb_miss(handle_pkt.vberti_tlb_events, false);
+    }
     return true;
+  }
 
   auto mshr_pkt = mshr_and_forward_packet(handle_pkt);
 
@@ -618,9 +732,30 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
   auto mshr_entry = std::find_if(std::begin(MSHR), std::end(MSHR), matches_address(handle_pkt.address));
   bool mshr_full = (MSHR.size() == MSHR_SIZE);
   bool new_mshr = false;
+  bool merged_into_mshr = false;
+  auto tlb_mshr_merge_detail = champsim::dtlb_merge_detail::NONE;
 
   if (mshr_entry != MSHR.end()) // miss already inflight
   {
+    merged_into_mshr = true;
+    if (is_tlb())
+      tlb_mshr_merge_detail = classify_tlb_mshr_merge_target(mshr_entry->translation_source);
+    if (mshr_entry->vberti_end_to_end_tracked && !handle_pkt.is_instr && is_cache_demand_type(handle_pkt.type))
+      champsim::vberti_end_to_end::mark_useful(mshr_entry->vberti_end_to_end_cpu, mshr_entry->vberti_end_to_end_id, true);
+    if (handle_pkt.vberti_end_to_end_tracked)
+      champsim::vberti_end_to_end::cancel(handle_pkt.vberti_end_to_end_cpu, handle_pkt.vberti_end_to_end_id);
+
+    if (is_tlb() && is_demand_origin(handle_pkt.translation_source) && !mshr_entry->tlb_ptw_real_demand_waiting) {
+      if (mshr_entry->tlb_ptw_prefetch_tracked) {
+        champsim::tlb_ptw_system::note_demand_for_id(mshr_entry->tlb_ptw_prefetch_cpu, mshr_entry->tlb_ptw_prefetch_id);
+      } else if (is_dtlb() && is_l1d_cross_page_prefetch_origin(mshr_entry->translation_source)) {
+        const champsim::tlb_ptw_system::key translation{handle_pkt.cpu, champsim::page_number{handle_pkt.v_address}.to<uint64_t>(), handle_pkt.asid[0],
+                                                         handle_pkt.asid[1]};
+        champsim::tlb_ptw_system::note_demand_for_key(translation);
+      }
+      mshr_entry->tlb_ptw_real_demand_waiting = true;
+    }
+
     if (mshr_entry->type == access_type::PREFETCH && handle_pkt.type != access_type::PREFETCH) {
       // Mark the prefetch as useful
       if (mshr_entry->prefetch_from_this) {
@@ -640,6 +775,16 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
       return false;  // TODO should we allow prefetches anyway if they will not be filled to this level?
     }
 
+    if (is_stlb() && is_l1d_cross_page_prefetch_origin(handle_pkt.translation_source)) {
+      const auto ptw_id = champsim::tlb_ptw_system::reserve_prefetch_ptw_id(handle_pkt.cpu);
+      mshr_pkt.first.tlb_ptw_prefetch_tracked = true;
+      mshr_pkt.first.tlb_ptw_prefetch_cpu = handle_pkt.cpu;
+      mshr_pkt.first.tlb_ptw_prefetch_id = ptw_id;
+      mshr_pkt.second.tlb_ptw_prefetch_tracked = true;
+      mshr_pkt.second.tlb_ptw_prefetch_cpu = handle_pkt.cpu;
+      mshr_pkt.second.tlb_ptw_prefetch_id = ptw_id;
+    }
+
     const bool send_to_rq = (prefetch_as_load || handle_pkt.type != access_type::PREFETCH);
     bool success = send_to_rq ? lower_level->add_rq(mshr_pkt.second) : lower_level->add_pq(mshr_pkt.second);
 
@@ -652,6 +797,19 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
       MSHR.emplace_back(std::move(mshr_pkt.first));
       new_mshr = true;
     }
+  }
+
+  if (is_dtlb()) {
+    champsim::demand_tlb_pattern_logger().mark_l1dtlb_miss(handle_pkt.demand_tlb_events, merged_into_mshr, tlb_mshr_merge_detail);
+    champsim::demand_tlb_pattern_logger().mark_l1dtlb_miss(handle_pkt.demand_tlb_coalesced_events, true, champsim::dtlb_merge_detail::RQ_MERGE);
+    champsim::vberti_cross_page_demand_pattern_logger().mark_l1dtlb_miss(handle_pkt.vberti_tlb_events, merged_into_mshr,
+                                                                        tlb_mshr_merge_detail);
+    champsim::vberti_cross_page_demand_pattern_logger().mark_l1dtlb_miss(handle_pkt.vberti_tlb_coalesced_events, true,
+                                                                        champsim::dtlb_merge_detail::RQ_MERGE);
+  } else if (is_stlb()) {
+    champsim::demand_tlb_pattern_logger().mark_stlb_miss(handle_pkt.demand_tlb_events, merged_into_mshr, tlb_mshr_merge_detail);
+    champsim::vberti_cross_page_demand_pattern_logger().mark_stlb_miss(handle_pkt.vberti_tlb_events, merged_into_mshr,
+                                                                      tlb_mshr_merge_detail);
   }
 
   sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
@@ -743,10 +901,19 @@ long CACHE::operate()
 
   // Finish translations
   if (lower_translate != nullptr) {
-    std::for_each(std::cbegin(lower_translate->returned), std::cend(lower_translate->returned), [this](const auto& pkt) { this->finish_translation(pkt); });
+    std::for_each(std::cbegin(lower_translate->returned), std::cend(lower_translate->returned), [this](const auto& pkt) {
+      this->finish_translation(pkt);
+      this->finish_pqfull_tlb_rescue_translation(pkt);
+    });
     progress += std::distance(std::cbegin(lower_translate->returned), std::cend(lower_translate->returned));
     lower_translate->returned.clear();
   }
+
+  // Translation-only packets use the normal L1D PQ and DTLB/STLB/PTW path.
+  // Remove them only after translation has completed, before any data tag
+  // lookup or lower-cache request can be generated.
+  progress += drop_translated_l1d_cross_page_translation_only(translation_stash);
+  progress += drop_translated_l1d_cross_page_translation_only(inflight_tag_check);
 
   // Perform fills
   champsim::bandwidth fill_bw{MAX_FILL};
@@ -799,6 +966,7 @@ long CACHE::operate()
   // Issue translations
   std::for_each(std::begin(inflight_tag_check), std::end(inflight_tag_check), [this](auto& x) { this->issue_translation(x); });
   std::for_each(std::begin(translation_stash), std::end(translation_stash), [this](auto& x) { this->issue_translation(x); });
+  progress += issue_pqfull_tlb_rescue();
 
   // Find entries that would be ready except that they have not finished translation, move them to the stash
   auto [last_not_missed, stash_end] = champsim::extract_if(std::begin(inflight_tag_check), std::end(inflight_tag_check), std::back_inserter(translation_stash),
@@ -904,33 +1072,98 @@ bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint3
 {
   ++sim_stats.pf_requested;
 
+  const auto is_vberti_prefetch = is_l1d_pref_meta(prefetch_metadata);
+  const auto is_cross_page_prefetch = is_vberti_prefetch && is_l1d_pref_cross(prefetch_metadata);
+  const auto is_l1d_vberti_prefetch =
+      is_vberti_prefetch && NAME.size() >= 4 && NAME.compare(NAME.size() - 4, 4, "_L1D") == 0;
+  const auto prefetch_seq = is_vberti_prefetch ? vberti_prefetch_seq_counter++ : 0;
+  const auto is_translation_only_prefetch = champsim::l1d_cross_page_pf_translation_only && is_l1d_vberti_prefetch
+                                            && is_l1d_pref_translation_only(prefetch_metadata);
+
+  if (is_translation_only_prefetch)
+    ++sim_stats.cross_page_pf_translation_only_requested;
+
+  auto make_prefetch_packet = [this, pf_addr, prefetch_metadata]() {
+    request_type pf_packet;
+    pf_packet.type = access_type::PREFETCH;
+    pf_packet.pf_metadata = prefetch_metadata;
+    pf_packet.cpu = cpu;
+    pf_packet.address = pf_addr;
+    pf_packet.v_address = virtual_prefetch ? pf_addr : champsim::address{};
+    pf_packet.is_translated = !virtual_prefetch;
+    pf_packet.is_instr = NAME.size() >= 4 && NAME.compare(NAME.size() - 4, 4, "_L1I") == 0;
+    if (pf_packet.is_instr) {
+      pf_packet.translation_source = translation_origin::L1I_PREFETCH;
+    } else if (NAME.size() >= 4 && NAME.compare(NAME.size() - 4, 4, "_L1D") == 0) {
+      pf_packet.translation_source = translation_origin::L1D_PREFETCH;
+    }
+    return pf_packet;
+  };
+
   if (std::size(internal_PQ) >= PQ_SIZE) {
+    if (is_cross_page_prefetch) {
+      ++sim_stats.cp_pf_pqfull_drop;
+      if (champsim::ordered_pqfull_tlb_rescue && lower_translate != nullptr && virtual_prefetch
+          && std::size(pqfull_tlb_rescue_queue) < PQFULL_TLB_RESCUE_QUEUE_SIZE) {
+        auto pf_packet = make_prefetch_packet();
+        tag_lookup_type rescue_entry{pf_packet, true, !fill_this_level};
+        rescue_entry.has_l1d_prefetch_seq = true;
+        rescue_entry.l1d_prefetch_seq = prefetch_seq;
+        rescue_entry.translation_only_rescue = true;
+        pqfull_tlb_rescue_queue.push_back(rescue_entry);
+        ++sim_stats.cp_pf_pqfull_tlb_rescue_enqueued;
+      }
+    }
     return false;
   }
 
-  request_type pf_packet;
-  pf_packet.type = access_type::PREFETCH;
-  pf_packet.pf_metadata = prefetch_metadata;
-  pf_packet.cpu = cpu;
-  pf_packet.address = pf_addr;
-  pf_packet.v_address = virtual_prefetch ? pf_addr : champsim::address{};
-  pf_packet.is_translated = !virtual_prefetch;
-  pf_packet.is_instr = NAME.size() >= 4 && NAME.compare(NAME.size() - 4, 4, "_L1I") == 0;
-  if (pf_packet.is_instr) {
-    pf_packet.translation_source = translation_origin::L1I_PREFETCH;
-  } else if (NAME.size() >= 4 && NAME.compare(NAME.size() - 4, 4, "_L1D") == 0) {
-    pf_packet.translation_source = translation_origin::L1D_PREFETCH;
-  }
-
+  auto pf_packet = make_prefetch_packet();
   internal_PQ.emplace_back(pf_packet, true, !fill_this_level);
+  if (is_vberti_prefetch) {
+    internal_PQ.back().has_l1d_prefetch_seq = true;
+    internal_PQ.back().l1d_prefetch_seq = prefetch_seq;
+    if (!warmup && is_l1d_vberti_prefetch && !is_translation_only_prefetch) {
+      if (!vberti_end_to_end_roi_started) {
+        champsim::vberti_end_to_end::reset(cpu);
+        vberti_end_to_end_id_counter = 0;
+        vberti_end_to_end_roi_started = true;
+      }
+      internal_PQ.back().vberti_end_to_end_tracked = true;
+      internal_PQ.back().vberti_end_to_end_cpu = cpu;
+      internal_PQ.back().vberti_end_to_end_id = vberti_end_to_end_id_counter++;
+      champsim::vberti_end_to_end::issue(cpu, internal_PQ.back().vberti_end_to_end_id);
+    }
+  }
   ++sim_stats.pf_issued;
-  if (is_l1d_pref_meta(prefetch_metadata)) {
+  if (is_vberti_prefetch) {
     ++sim_stats.vberti_prefetch_issued;
-    if (is_l1d_pref_cross(prefetch_metadata))
+    if (is_cross_page_prefetch)
       ++sim_stats.vberti_cross_page_issued;
   }
+  if (is_translation_only_prefetch)
+    ++sim_stats.cross_page_pf_translation_only_issued;
 
   return true;
+}
+
+bool CACHE::should_drop_l1d_cross_page_translation_only(const tag_lookup_type& handle_pkt) const
+{
+  return champsim::l1d_cross_page_pf_translation_only && is_l1d_name(NAME) && handle_pkt.type == access_type::PREFETCH
+         && handle_pkt.prefetch_from_this && handle_pkt.is_translated && is_l1d_pref_cross(handle_pkt.pf_metadata)
+         && is_l1d_pref_translation_only(handle_pkt.pf_metadata);
+}
+
+std::size_t CACHE::drop_translated_l1d_cross_page_translation_only(std::deque<tag_lookup_type>& queue)
+{
+  if (!champsim::l1d_cross_page_pf_translation_only || !is_l1d_name(NAME))
+    return 0;
+
+  const auto drop_begin = std::remove_if(std::begin(queue), std::end(queue),
+                                         [this](const auto& pkt) { return should_drop_l1d_cross_page_translation_only(pkt); });
+  const auto dropped = static_cast<std::size_t>(std::distance(drop_begin, std::end(queue)));
+  queue.erase(drop_begin, std::end(queue));
+  sim_stats.cross_page_pf_translation_only_dropped += dropped;
+  return dropped;
 }
 
 // LCOV_EXCL_START exclude deprecated function
@@ -957,6 +1190,17 @@ void CACHE::finish_packet(const response_type& packet)
     assert(0);
   }
 
+  if (mshr_entry->tlb_ptw_real_demand_waiting && packet.tlb_ptw_prefetch_tracked)
+    champsim::tlb_ptw_system::note_demand_for_id(packet.tlb_ptw_prefetch_cpu, packet.tlb_ptw_prefetch_id);
+  if (is_dtlb()) {
+    const champsim::tlb_ptw_system::key translation{mshr_entry->cpu, champsim::page_number{mshr_entry->v_address}.to<uint64_t>(), mshr_entry->asid[0],
+                                                     mshr_entry->asid[1]};
+    champsim::tlb_ptw_system::clear_waiting_for_key(translation);
+  }
+  mshr_entry->tlb_ptw_prefetch_tracked = packet.tlb_ptw_prefetch_tracked;
+  mshr_entry->tlb_ptw_prefetch_cpu = packet.tlb_ptw_prefetch_cpu;
+  mshr_entry->tlb_ptw_prefetch_id = packet.tlb_ptw_prefetch_id;
+
   // MSHR holds the most updated information about this request
   mshr_type::returned_value finished_value{packet.data, packet.pf_metadata};
   mshr_entry->data_promise = champsim::waitable{finished_value, current_time + (warmup ? champsim::chrono::clock::duration{} : FILL_LATENCY)};
@@ -977,6 +1221,14 @@ void CACHE::finish_translation(const response_type& packet)
   };
   auto mark_translated = [p_page = champsim::page_number{packet.data}, this](auto& entry) {
     [[maybe_unused]] auto old_address = entry.address;
+    if (is_l1d_name(NAME)) {
+      const auto completion_cycle = static_cast<uint64_t>(current_time.time_since_epoch() / clock_period);
+      const auto ppn = p_page.to<uint64_t>();
+      champsim::demand_tlb_pattern_logger().complete(entry.demand_tlb_events, completion_cycle, ppn);
+      champsim::demand_tlb_pattern_logger().complete(entry.demand_tlb_coalesced_events, completion_cycle, ppn);
+      champsim::vberti_cross_page_demand_pattern_logger().complete(entry.vberti_tlb_events, completion_cycle, ppn);
+      champsim::vberti_cross_page_demand_pattern_logger().complete(entry.vberti_tlb_coalesced_events, completion_cycle, ppn);
+    }
     entry.address = champsim::address{champsim::splice(p_page, champsim::page_offset{entry.v_address})}; // translated address
     entry.is_translated = true;                                                                          // This entry is now translated
 
@@ -999,6 +1251,18 @@ void CACHE::finish_translation(const response_type& packet)
   }
 }
 
+void CACHE::finish_pqfull_tlb_rescue_translation(const response_type& packet)
+{
+  auto matches_vpage = [page_num = champsim::page_number{packet.v_address}](const auto& entry) {
+    return (champsim::page_number{entry.v_address} == page_num) && !entry.is_translated;
+  };
+
+  auto translated_begin = std::stable_partition(std::begin(pqfull_tlb_rescue_inflight), std::end(pqfull_tlb_rescue_inflight), matches_vpage);
+  const auto translated = std::distance(std::begin(pqfull_tlb_rescue_inflight), translated_begin);
+  sim_stats.cp_pf_pqfull_tlb_rescue_translated += static_cast<uint64_t>(translated);
+  pqfull_tlb_rescue_inflight.erase(std::begin(pqfull_tlb_rescue_inflight), translated_begin);
+}
+
 void CACHE::issue_translation(tag_lookup_type& q_entry) const
 {
   if (!q_entry.translate_issued && !q_entry.is_translated) {
@@ -1016,11 +1280,61 @@ void CACHE::issue_translation(tag_lookup_type& q_entry) const
     fwd_pkt.instr_id = q_entry.instr_id;
     fwd_pkt.ip = q_entry.ip;
     fwd_pkt.is_instr = q_entry.is_instr;
+    fwd_pkt.demand_tlb_operand_index = q_entry.demand_tlb_operand_index;
 
     fwd_pkt.instr_depend_on_me = q_entry.instr_depend_on_me;
     fwd_pkt.is_translated = true;
 
+    std::optional<champsim::demand_tlb_pattern_event_ref> new_pattern_event;
+    const bool is_demand_data_load = is_l1d_name(NAME) && q_entry.type == access_type::LOAD && !q_entry.is_instr && !q_entry.prefetch_from_this;
+    const bool is_cross_page_vberti_prefetch =
+        is_l1d_name(NAME) && q_entry.type == access_type::PREFETCH && q_entry.prefetch_from_this
+        && is_l1d_cross_page_prefetch_origin(fwd_pkt.translation_source);
+    if (is_demand_data_load && !warmup && q_entry.demand_tlb_events.empty()) {
+      new_pattern_event = champsim::demand_tlb_pattern_logger().next_event_ref(q_entry.cpu);
+      if (new_pattern_event.has_value()) {
+        fwd_pkt.demand_tlb_stage = champsim::demand_tlb_pattern_stage::L1_DTLB;
+        fwd_pkt.demand_tlb_events = {*new_pattern_event};
+      }
+    }
+
+    std::optional<champsim::vberti_tlb_pattern_event_ref> new_vberti_pattern_event;
+    if (!warmup && q_entry.vberti_tlb_events.empty() && (is_demand_data_load || is_cross_page_vberti_prefetch)) {
+      const auto event_type = is_demand_data_load ? champsim::vberti_tlb_pattern_event_type::DATA_DEMAND
+                                                  : champsim::vberti_tlb_pattern_event_type::VBERTI_CP_PREFETCH;
+      new_vberti_pattern_event = champsim::vberti_cross_page_demand_pattern_logger().next_event_ref(q_entry.cpu, event_type);
+      if (new_vberti_pattern_event.has_value()) {
+        fwd_pkt.vberti_tlb_stage = champsim::vberti_tlb_pattern_stage::L1_DTLB;
+        fwd_pkt.vberti_tlb_events = {*new_vberti_pattern_event};
+      }
+    }
+
     q_entry.translate_issued = lower_translate->add_rq(fwd_pkt);
+    if (q_entry.translate_issued && new_pattern_event.has_value()) {
+      q_entry.demand_tlb_stage = champsim::demand_tlb_pattern_stage::L1_DTLB;
+      q_entry.demand_tlb_events = {*new_pattern_event};
+      champsim::demand_tlb_pattern_event_start start;
+      start.cpu = q_entry.cpu;
+      start.instr_id = q_entry.instr_id;
+      start.operand_index = q_entry.demand_tlb_operand_index;
+      start.pc = q_entry.ip.to<uint64_t>();
+      start.va = q_entry.v_address.to<uint64_t>();
+      start.dtlb_lookup_cycle = static_cast<uint64_t>(current_time.time_since_epoch() / clock_period);
+      champsim::demand_tlb_pattern_logger().create_event(*new_pattern_event, start);
+    }
+    if (q_entry.translate_issued && new_vberti_pattern_event.has_value()) {
+      q_entry.vberti_tlb_stage = champsim::vberti_tlb_pattern_stage::L1_DTLB;
+      q_entry.vberti_tlb_events = {*new_vberti_pattern_event};
+      champsim::vberti_tlb_pattern_event_start start;
+      start.cpu = q_entry.cpu;
+      start.instr_id = q_entry.instr_id;
+      start.operand_index = q_entry.demand_tlb_operand_index;
+      start.pc = q_entry.ip.to<uint64_t>();
+      start.va = q_entry.v_address.to<uint64_t>();
+      start.dtlb_lookup_cycle = static_cast<uint64_t>(current_time.time_since_epoch() / clock_period);
+      start.vberti_prefetch_seq = q_entry.has_l1d_prefetch_seq ? q_entry.l1d_prefetch_seq : 0;
+      champsim::vberti_cross_page_demand_pattern_logger().create_event(*new_vberti_pattern_event, start);
+    }
     if constexpr (champsim::debug_print) {
       if (q_entry.translate_issued) {
         fmt::print("[TRANSLATE] do_issue_translation instr_id: {} paddr: {} vaddr: {} type: {}\n", q_entry.instr_id, q_entry.address, q_entry.v_address,
@@ -1028,6 +1342,44 @@ void CACHE::issue_translation(tag_lookup_type& q_entry) const
       }
     }
   }
+}
+
+bool CACHE::pqfull_tlb_rescue_can_issue() const
+{
+  if (!champsim::ordered_pqfull_tlb_rescue || lower_translate == nullptr || std::empty(pqfull_tlb_rescue_queue))
+    return false;
+
+  if (std::empty(internal_PQ))
+    return true;
+
+  auto oldest_pq_seq = std::numeric_limits<uint64_t>::max();
+  bool found_seq = false;
+  for (const auto& entry : internal_PQ) {
+    if (entry.has_l1d_prefetch_seq) {
+      oldest_pq_seq = std::min(oldest_pq_seq, entry.l1d_prefetch_seq);
+      found_seq = true;
+    } else {
+      return false;
+    }
+  }
+
+  return found_seq && pqfull_tlb_rescue_queue.front().l1d_prefetch_seq < oldest_pq_seq;
+}
+
+long CACHE::issue_pqfull_tlb_rescue()
+{
+  if (!pqfull_tlb_rescue_can_issue())
+    return 0;
+
+  auto entry = pqfull_tlb_rescue_queue.front();
+  issue_translation(entry);
+  if (!entry.translate_issued)
+    return 0;
+
+  pqfull_tlb_rescue_queue.pop_front();
+  pqfull_tlb_rescue_inflight.push_back(entry);
+  ++sim_stats.cp_pf_pqfull_tlb_rescue_issued;
+  return 1;
 }
 
 translation_origin CACHE::classify_translation_origin(const tag_lookup_type& q_entry) const
@@ -1064,7 +1416,8 @@ void CACHE::insert_stlb_cp_pb(const mshr_type& fill_mshr)
 {
   const auto key = make_tlb_prefetch_key(fill_mshr.cpu, fill_mshr.v_address, fill_mshr.asid);
   stlb_cp_pb[key] = stlb_cp_pb_entry{fill_mshr.address, fill_mshr.v_address, fill_mshr.data_promise->data, fill_mshr.data_promise->pf_metadata,
-                                     fill_mshr.cpu, {fill_mshr.asid[0], fill_mshr.asid[1]}};
+                                     fill_mshr.cpu, {fill_mshr.asid[0], fill_mshr.asid[1]}, fill_mshr.tlb_ptw_prefetch_tracked,
+                                     fill_mshr.tlb_ptw_prefetch_cpu, fill_mshr.tlb_ptw_prefetch_id};
   ++sim_stats.stlb_cp_pb_insert;
 }
 
@@ -1092,11 +1445,15 @@ void CACHE::fill_stlb_from_cp_pb(const tag_lookup_type& handle_pkt, const stlb_c
       remember_prefetch_too_early_candidate(*way, way->cpu);
       ++sim_stats.pf_useless;
     }
+    record_tlb_ptw_system_eviction(*way);
     record_tlb_cross_prefetch_eviction(*way, way->cpu);
   }
 
   mshr_type fill_mshr{handle_pkt, current_time};
   fill_mshr.data_promise = champsim::waitable{mshr_type::returned_value{entry.data, handle_pkt.pf_metadata}, current_time};
+  fill_mshr.tlb_ptw_prefetch_tracked = entry.tlb_ptw_prefetch_tracked;
+  fill_mshr.tlb_ptw_prefetch_cpu = entry.tlb_ptw_prefetch_cpu;
+  fill_mshr.tlb_ptw_prefetch_id = entry.tlb_ptw_prefetch_id;
 
   uint32_t metadata_thru = handle_pkt.pf_metadata;
   if (!module_is_instr(fill_mshr)) {
@@ -1108,6 +1465,9 @@ void CACHE::fill_stlb_from_cp_pb(const tag_lookup_type& handle_pkt, const stlb_c
 
   *way = fill_block(fill_mshr, metadata_thru);
   sim_stats.tlb_origin_fills.increment(std::pair{fill_mshr.translation_source, fill_mshr.cpu});
+  record_tlb_ptw_system_fill(fill_mshr, *way);
+  if (entry.tlb_ptw_prefetch_tracked)
+    champsim::tlb_ptw_system::mark_useful(entry.tlb_ptw_prefetch_cpu, entry.tlb_ptw_prefetch_id, false);
 }
 
 bool CACHE::try_stlb_cp_pb_demand_hit(const tag_lookup_type& handle_pkt)
@@ -1142,6 +1502,9 @@ bool CACHE::try_stlb_cp_pb_demand_hit(const tag_lookup_type& handle_pkt)
   fill_stlb_from_cp_pb(handle_pkt, entry);
 
   response_type response{handle_pkt.address, handle_pkt.v_address, entry.data, handle_pkt.pf_metadata, handle_pkt.instr_depend_on_me};
+  response.tlb_ptw_prefetch_tracked = entry.tlb_ptw_prefetch_tracked;
+  response.tlb_ptw_prefetch_cpu = entry.tlb_ptw_prefetch_cpu;
+  response.tlb_ptw_prefetch_id = entry.tlb_ptw_prefetch_id;
   for (auto* ret : handle_pkt.to_return) {
     ret->push_back(response);
   }
@@ -1334,6 +1697,39 @@ void CACHE::record_tlb_cross_prefetch_hit(const tag_lookup_type& handle_pkt, BLO
   ++sim_stats.tlb_cross_prefetch_useful;
   if (mark_tlb_system_useful(make_tlb_system_key(handle_pkt.cpu, handle_pkt.v_address, handle_pkt.asid)))
     ++sim_stats.tlb_system_cross_prefetch_useful;
+}
+
+void CACHE::record_tlb_ptw_system_fill(const mshr_type& fill_mshr, BLOCK& way)
+{
+  if (!is_tlb() || !fill_mshr.tlb_ptw_prefetch_tracked) {
+    way.tlb_ptw_prefetch_tracked = false;
+    return;
+  }
+
+  const auto level = is_dtlb() ? champsim::tlb_ptw_system::residency_level::dtlb : champsim::tlb_ptw_system::residency_level::stlb;
+  const bool tracked = champsim::tlb_ptw_system::mark_fill(fill_mshr.tlb_ptw_prefetch_cpu, fill_mshr.tlb_ptw_prefetch_id, level);
+  way.tlb_ptw_prefetch_tracked = tracked;
+  if (tracked) {
+    way.tlb_ptw_prefetch_cpu = fill_mshr.tlb_ptw_prefetch_cpu;
+    way.tlb_ptw_prefetch_id = fill_mshr.tlb_ptw_prefetch_id;
+  }
+}
+
+void CACHE::record_tlb_ptw_system_eviction(const BLOCK& victim)
+{
+  if (!is_tlb() || !victim.tlb_ptw_prefetch_tracked)
+    return;
+
+  const auto level = is_dtlb() ? champsim::tlb_ptw_system::residency_level::dtlb : champsim::tlb_ptw_system::residency_level::stlb;
+  champsim::tlb_ptw_system::mark_eviction(victim.tlb_ptw_prefetch_cpu, victim.tlb_ptw_prefetch_id, level);
+}
+
+void CACHE::record_tlb_ptw_system_hit(const tag_lookup_type& handle_pkt, const BLOCK& way)
+{
+  if (!is_tlb() || !is_demand_origin(handle_pkt.translation_source) || !way.tlb_ptw_prefetch_tracked)
+    return;
+
+  champsim::tlb_ptw_system::mark_useful(way.tlb_ptw_prefetch_cpu, way.tlb_ptw_prefetch_id, false);
 }
 
 void CACHE::record_tlb_cross_prefetch_miss(const tag_lookup_type& handle_pkt, bool new_mshr)
@@ -1556,6 +1952,8 @@ void CACHE::initialize()
 void CACHE::begin_phase()
 {
   if (is_tlb()) {
+    if (is_stlb())
+      champsim::tlb_ptw_system::reset(cpu);
     tlb_cross_prefetch_pending.clear();
     tlb_cross_prefetch_too_early_fifo.clear();
     tlb_cross_prefetch_too_early_shadow.clear();
@@ -1567,6 +1965,7 @@ void CACHE::begin_phase()
     for (auto& way : block) {
       way.tlb_cross_prefetch = false;
       way.tlb_cross_prefetch_used = false;
+      way.tlb_ptw_prefetch_tracked = false;
     }
   }
   prefetch_too_early_fifo.clear();
@@ -1574,6 +1973,9 @@ void CACHE::begin_phase()
   prefetch_pollution_fifo.clear();
   prefetch_pollution_shadow.clear();
   prefetch_pollution_next_id = 0;
+  pqfull_tlb_rescue_queue.clear();
+  pqfull_tlb_rescue_inflight.clear();
+  vberti_end_to_end_roi_started = false;
 
   stats_type new_roi_stats;
   stats_type new_sim_stats;
@@ -1622,6 +2024,13 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.vberti_cross_page_requested = sim_stats.vberti_cross_page_requested;
   roi_stats.vberti_prefetch_issued = sim_stats.vberti_prefetch_issued;
   roi_stats.vberti_cross_page_issued = sim_stats.vberti_cross_page_issued;
+  roi_stats.cross_page_pf_translation_only_requested = sim_stats.cross_page_pf_translation_only_requested;
+  roi_stats.cross_page_pf_translation_only_issued = sim_stats.cross_page_pf_translation_only_issued;
+  roi_stats.cross_page_pf_translation_only_dropped = sim_stats.cross_page_pf_translation_only_dropped;
+  roi_stats.cp_pf_pqfull_drop = sim_stats.cp_pf_pqfull_drop;
+  roi_stats.cp_pf_pqfull_tlb_rescue_enqueued = sim_stats.cp_pf_pqfull_tlb_rescue_enqueued;
+  roi_stats.cp_pf_pqfull_tlb_rescue_issued = sim_stats.cp_pf_pqfull_tlb_rescue_issued;
+  roi_stats.cp_pf_pqfull_tlb_rescue_translated = sim_stats.cp_pf_pqfull_tlb_rescue_translated;
   roi_stats.tlb_cross_prefetch_issued = sim_stats.tlb_cross_prefetch_issued;
   roi_stats.tlb_cross_prefetch_useful = sim_stats.tlb_cross_prefetch_useful;
   roi_stats.tlb_cross_prefetch_useless = sim_stats.tlb_cross_prefetch_useless;

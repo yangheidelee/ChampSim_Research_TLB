@@ -16,6 +16,14 @@ cache_stats operator-(cache_stats lhs, cache_stats rhs)
   result.vberti_cross_page_requested = lhs.vberti_cross_page_requested - rhs.vberti_cross_page_requested;
   result.vberti_prefetch_issued = lhs.vberti_prefetch_issued - rhs.vberti_prefetch_issued;
   result.vberti_cross_page_issued = lhs.vberti_cross_page_issued - rhs.vberti_cross_page_issued;
+  result.cross_page_pf_translation_only_requested =
+      lhs.cross_page_pf_translation_only_requested - rhs.cross_page_pf_translation_only_requested;
+  result.cross_page_pf_translation_only_issued = lhs.cross_page_pf_translation_only_issued - rhs.cross_page_pf_translation_only_issued;
+  result.cross_page_pf_translation_only_dropped = lhs.cross_page_pf_translation_only_dropped - rhs.cross_page_pf_translation_only_dropped;
+  result.cp_pf_pqfull_drop = lhs.cp_pf_pqfull_drop - rhs.cp_pf_pqfull_drop;
+  result.cp_pf_pqfull_tlb_rescue_enqueued = lhs.cp_pf_pqfull_tlb_rescue_enqueued - rhs.cp_pf_pqfull_tlb_rescue_enqueued;
+  result.cp_pf_pqfull_tlb_rescue_issued = lhs.cp_pf_pqfull_tlb_rescue_issued - rhs.cp_pf_pqfull_tlb_rescue_issued;
+  result.cp_pf_pqfull_tlb_rescue_translated = lhs.cp_pf_pqfull_tlb_rescue_translated - rhs.cp_pf_pqfull_tlb_rescue_translated;
   result.tlb_cross_prefetch_issued = lhs.tlb_cross_prefetch_issued - rhs.tlb_cross_prefetch_issued;
   result.tlb_cross_prefetch_useful = lhs.tlb_cross_prefetch_useful - rhs.tlb_cross_prefetch_useful;
   result.tlb_cross_prefetch_useless = lhs.tlb_cross_prefetch_useless - rhs.tlb_cross_prefetch_useless;
