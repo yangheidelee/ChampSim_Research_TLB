@@ -1,0 +1,121 @@
+[
+  {
+    "executable_name": "compile-stlb-sp",
+    "STLB": {
+      "prefetcher": "prefetcher_stlb/sp",
+      "prefetch_activate": "LOAD",
+      "prefetch_as_load": false,
+      "pq_size": 16
+    },
+    "PTW": { "pq_size": 16 }
+  },
+  {
+    "executable_name": "compile-stlb-dp",
+    "STLB": {
+      "prefetcher": "prefetcher_stlb/dp",
+      "prefetch_activate": "LOAD",
+      "prefetch_as_load": false,
+      "pq_size": 16
+    },
+    "PTW": { "pq_size": 16 }
+  },
+  {
+    "executable_name": "compile-stlb-asp",
+    "STLB": {
+      "prefetcher": "prefetcher_stlb/asp",
+      "prefetch_activate": "LOAD",
+      "prefetch_as_load": false,
+      "pq_size": 16
+    },
+    "PTW": { "pq_size": 16 }
+  },
+  {
+    "executable_name": "compile-stlb-stp",
+    "STLB": {
+      "prefetcher": "prefetcher_stlb/stp",
+      "prefetch_activate": "LOAD",
+      "prefetch_as_load": false,
+      "pq_size": 16
+    },
+    "PTW": { "pq_size": 16 }
+  },
+  {
+    "executable_name": "compile-stlb-h2p",
+    "STLB": {
+      "prefetcher": "prefetcher_stlb/h2p",
+      "prefetch_activate": "LOAD",
+      "prefetch_as_load": false,
+      "pq_size": 16
+    },
+    "PTW": { "pq_size": 16 }
+  },
+  {
+    "executable_name": "compile-stlb-masp",
+    "STLB": {
+      "prefetcher": "prefetcher_stlb/masp",
+      "prefetch_activate": "LOAD",
+      "prefetch_as_load": false,
+      "pq_size": 16
+    },
+    "PTW": { "pq_size": 16 }
+  },
+  {
+    "executable_name": "compile-stlb-atp",
+    "STLB": {
+      "prefetcher": "prefetcher_stlb/atp",
+      "prefetch_activate": "LOAD",
+      "prefetch_as_load": false,
+      "pq_size": 16,
+      "stlb_prefetch_destination": "STLB"
+    },
+    "PTW": { "pq_size": 16 }
+  },
+  {
+    "executable_name": "compile-stlb-atp-pb",
+    "STLB": {
+      "prefetcher": "prefetcher_stlb/atp",
+      "prefetch_activate": "LOAD",
+      "prefetch_as_load": false,
+      "pq_size": 16,
+      "stlb_prefetch_destination": "PB",
+      "stlb_prefetch_buffer_size": 64,
+      "stlb_prefetch_buffer_latency": 2
+    },
+    "PTW": { "pq_size": 16 }
+  },
+  {
+    "executable_name": "compile-stlb-stride-pb",
+    "L1D": {
+      "prefetcher": "no"
+    },
+    "STLB": {
+      "prefetcher": "prefetcher_stlb/stlb_stride",
+      "prefetch_activate": "LOAD",
+      "prefetch_as_load": false,
+      "pq_size": 16,
+      "stlb_prefetch_destination": "PB",
+      "stlb_prefetch_buffer_size": 16,
+      "stlb_prefetch_buffer_latency": 2
+    },
+    "PTW": { "pq_size": 16 }
+  },
+  {
+    "executable_name": "compile-vberti-stlb-stride-pb",
+    "L1D": {
+      "prefetcher": "vberti",
+      "prefetch_activate": "LOAD,WRITE,PREFETCH",
+      "virtual_prefetch": true,
+      "pq_size": 8
+    },
+    "STLB": {
+      "prefetcher": "prefetcher_stlb/stlb_stride",
+      "prefetch_activate": "LOAD",
+      "prefetch_as_load": false,
+      "pq_size": 16,
+      "stlb_prefetch_destination": "PB",
+      "stlb_prefetch_buffer_size": 16,
+      "stlb_prefetch_buffer_latency": 2
+    },
+    "PTW": { "pq_size": 16 }
+  }
+]

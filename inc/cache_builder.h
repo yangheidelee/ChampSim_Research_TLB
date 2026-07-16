@@ -33,6 +33,12 @@ class CACHE;
 namespace champsim
 {
 class channel;
+
+enum class stlb_prefetch_destination {
+  STLB,
+  PREFETCH_BUFFER,
+};
+
 template <typename... Ts>
 class cache_builder_module_type_holder
 {
@@ -57,6 +63,9 @@ struct cache_builder_base {
   bool m_pref_load{};
   bool m_wq_full_addr{};
   bool m_va_pref{};
+  stlb_prefetch_destination m_stlb_prefetch_destination{stlb_prefetch_destination::STLB};
+  std::size_t m_stlb_prefetch_buffer_size{0};
+  uint64_t m_stlb_prefetch_buffer_latency{2};
 
   std::vector<access_type> m_pref_act_mask{access_type::LOAD, access_type::PREFETCH};
   std::vector<champsim::channel*> m_uls{};
@@ -211,6 +220,21 @@ public:
    * Specify that prefetchers should operate in the physical address space.
    */
   self_type& reset_virtual_prefetch();
+
+  /**
+   * Route translations produced by the STLB-local prefetcher to an independent
+   * prefetch buffer instead of installing them in the STLB immediately.
+   */
+  self_type& set_stlb_prefetch_destination_buffer();
+
+  /** Route STLB-local translation prefetches directly to the STLB. */
+  self_type& reset_stlb_prefetch_destination_buffer();
+
+  /** Specify the number of entries in the STLB-local translation prefetch buffer. */
+  self_type& stlb_prefetch_buffer_size(std::size_t size_);
+
+  /** Specify the serial prefetch-buffer lookup latency, in STLB cycles. */
+  self_type& stlb_prefetch_buffer_latency(uint64_t latency_);
 
   /**
    * Specify the ``access_type`` values that should activate the prefetcher.
@@ -482,6 +506,34 @@ template <typename P, typename R>
 auto champsim::cache_builder<P, R>::reset_virtual_prefetch() -> self_type&
 {
   m_va_pref = false;
+  return *this;
+}
+
+template <typename P, typename R>
+auto champsim::cache_builder<P, R>::set_stlb_prefetch_destination_buffer() -> self_type&
+{
+  m_stlb_prefetch_destination = stlb_prefetch_destination::PREFETCH_BUFFER;
+  return *this;
+}
+
+template <typename P, typename R>
+auto champsim::cache_builder<P, R>::reset_stlb_prefetch_destination_buffer() -> self_type&
+{
+  m_stlb_prefetch_destination = stlb_prefetch_destination::STLB;
+  return *this;
+}
+
+template <typename P, typename R>
+auto champsim::cache_builder<P, R>::stlb_prefetch_buffer_size(std::size_t size_) -> self_type&
+{
+  m_stlb_prefetch_buffer_size = size_;
+  return *this;
+}
+
+template <typename P, typename R>
+auto champsim::cache_builder<P, R>::stlb_prefetch_buffer_latency(uint64_t latency_) -> self_type&
+{
+  m_stlb_prefetch_buffer_latency = latency_;
   return *this;
 }
 

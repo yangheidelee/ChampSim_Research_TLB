@@ -51,6 +51,11 @@ struct cache_block {
   translation_origin translation_source = translation_origin::OTHER;
   bool tlb_cross_prefetch = false;
   bool tlb_cross_prefetch_used = false;
+
+  // Independent provenance for the STLB-local prefetcher. This is kept
+  // separate from vBerti/L1D cross-page prefetch accounting.
+  bool stlb_prefetch = false;
+  bool stlb_prefetch_used = false;
 };
 } // namespace champsim
 

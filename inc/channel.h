@@ -87,6 +87,11 @@ class channel
     uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
     uint64_t tlb_ptw_prefetch_id = 0;
 
+    // Stats-only ownership for a request initiated by the STLB-local
+    // prefetcher. It never participates in channel matching.
+    bool stlb_prefetch_tracked = false;
+    bool stlb_prefetch_used = false;
+
     champsim::address address{};
     champsim::address v_address{};
     champsim::address data{};
@@ -110,6 +115,9 @@ class channel
     uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
     uint64_t tlb_ptw_prefetch_id = 0;
 
+    bool stlb_prefetch_tracked = false;
+    bool stlb_prefetch_used = false;
+
     response(champsim::address addr, champsim::address v_addr, champsim::address data_, uint32_t pf_meta, std::vector<uint64_t> deps)
         : address(addr), v_address(v_addr), data(data_), pf_metadata(pf_meta), instr_depend_on_me(deps)
     {
@@ -119,6 +127,8 @@ class channel
       tlb_ptw_prefetch_tracked = req.tlb_ptw_prefetch_tracked;
       tlb_ptw_prefetch_cpu = req.tlb_ptw_prefetch_cpu;
       tlb_ptw_prefetch_id = req.tlb_ptw_prefetch_id;
+      stlb_prefetch_tracked = req.stlb_prefetch_tracked;
+      stlb_prefetch_used = req.stlb_prefetch_used;
     }
   };
 

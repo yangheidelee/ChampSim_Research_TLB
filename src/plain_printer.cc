@@ -286,6 +286,7 @@ std::vector<std::string> format_cache_metric_block(const CACHE::stats_type& stat
 {
   std::vector<std::string> lines;
   const auto label = cache_label(cpu, stats.name);
+  const auto is_stlb_stats = stats.name.size() >= 5 && stats.name.compare(stats.name.size() - 5, 5, "_STLB") == 0;
   const std::array types{access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE};
   const std::array names{"load", "rfo", "prefetch", "writeback"};
 
@@ -319,6 +320,14 @@ std::vector<std::string> format_cache_metric_block(const CACHE::stats_type& stat
     auto accesses = access_count(stats, type, cpu);
     auto hits = hit_count(stats, type, cpu);
     auto misses = miss_count(stats, type, cpu);
+    // When an STLB-local predictor is active, keep the established prefetch
+    // labels but report only its requests. Other translation-prefetch origins
+    // retain the legacy aggregate values when the local predictor is disabled.
+    if (is_stlb_stats && type == access_type::PREFETCH && stats.stlb_prefetch_requested > 0) {
+      accesses = stats.stlb_prefetch_lookups;
+      hits = stats.stlb_prefetch_hit;
+      misses = stats.stlb_prefetch_miss;
+    }
     lines.push_back(fmt::format("{}_{}_access {}", label, name, accesses));
     lines.push_back(fmt::format("{}_{}_hit {}", label, name, hits));
     lines.push_back(fmt::format("{}_{}_miss {}", label, name, misses));
@@ -326,29 +335,51 @@ std::vector<std::string> format_cache_metric_block(const CACHE::stats_type& stat
     lines.push_back(fmt::format("{}_{}_miss_rate {:.6g}", label, name, ratio_or_zero(misses, accesses)));
   }
 
-  lines.push_back(fmt::format("{}_prefetch_requested {}", label, stats.pf_requested));
-  lines.push_back(fmt::format("{}_prefetch_issued {}", label, stats.pf_issued));
-  lines.push_back(fmt::format("{}_prefetch_useful {}", label, stats.pf_useful));
-  lines.push_back(fmt::format("{}_prefetch_useless {}", label, stats.pf_useless));
-  lines.push_back(fmt::format("{}_prefetch_late {}", label, stats.pf_late));
-  lines.push_back(fmt::format("{}_prefetch_fill {}", label, stats.pf_fill));
-  lines.push_back(fmt::format("{}_prefetch_too_early {}", label, stats.pf_too_early));
-  lines.push_back(fmt::format("{}_prefetch_too_early_among_fill {:.6g}", label, ratio_or_zero(stats.pf_too_early, stats.pf_fill)));
-  lines.push_back(fmt::format("{}_prefetch_too_early_among_useless {:.6g}", label, ratio_or_zero(stats.pf_too_early, stats.pf_useless)));
-  lines.push_back(fmt::format("{}_prefetch_pollution_evict {}", label, stats.pf_pollution_evict));
-  lines.push_back(fmt::format("{}_prefetch_pollution_demand {}", label, stats.pf_pollution_demand));
+  const auto pf_requested = is_stlb_stats ? stats.stlb_prefetch_requested : stats.pf_requested;
+  const auto pf_issued = is_stlb_stats ? stats.stlb_prefetch_issued : stats.pf_issued;
+  const auto pf_useful = is_stlb_stats ? stats.stlb_prefetch_useful : stats.pf_useful;
+  const auto pf_useless = is_stlb_stats ? stats.stlb_prefetch_useless : stats.pf_useless;
+  const auto pf_late = is_stlb_stats ? stats.stlb_prefetch_late : stats.pf_late;
+  const auto pf_fill = is_stlb_stats ? stats.stlb_prefetch_fill : stats.pf_fill;
+  const auto pf_too_early = is_stlb_stats ? stats.stlb_prefetch_too_early : stats.pf_too_early;
+  const auto pf_pollution_evict = is_stlb_stats ? stats.stlb_prefetch_pollution_evict : stats.pf_pollution_evict;
+  const auto pf_pollution_demand = is_stlb_stats ? stats.stlb_prefetch_pollution_demand : stats.pf_pollution_demand;
+  lines.push_back(fmt::format("{}_prefetch_requested {}", label, pf_requested));
+  lines.push_back(fmt::format("{}_prefetch_issued {}", label, pf_issued));
+  lines.push_back(fmt::format("{}_prefetch_useful {}", label, pf_useful));
+  lines.push_back(fmt::format("{}_prefetch_useless {}", label, pf_useless));
+  lines.push_back(fmt::format("{}_prefetch_late {}", label, pf_late));
+  lines.push_back(fmt::format("{}_prefetch_fill {}", label, pf_fill));
+  lines.push_back(fmt::format("{}_prefetch_too_early {}", label, pf_too_early));
+  lines.push_back(fmt::format("{}_prefetch_too_early_among_fill {:.6g}", label, ratio_or_zero(pf_too_early, pf_fill)));
+  lines.push_back(fmt::format("{}_prefetch_too_early_among_useless {:.6g}", label, ratio_or_zero(pf_too_early, pf_useless)));
+  lines.push_back(fmt::format("{}_prefetch_pollution_evict {}", label, pf_pollution_evict));
+  lines.push_back(fmt::format("{}_prefetch_pollution_demand {}", label, pf_pollution_demand));
   if (stats.cross_page_pf_translation_only_requested > 0 || stats.cross_page_pf_translation_only_issued > 0
       || stats.cross_page_pf_translation_only_dropped > 0) {
     lines.push_back(fmt::format("{}_cross_page_pf_translation_only_requested {}", label, stats.cross_page_pf_translation_only_requested));
     lines.push_back(fmt::format("{}_cross_page_pf_translation_only_issued {}", label, stats.cross_page_pf_translation_only_issued));
     lines.push_back(fmt::format("{}_cross_page_pf_translation_only_dropped {}", label, stats.cross_page_pf_translation_only_dropped));
   }
-  lines.push_back(fmt::format("{}_prefetch_pollution_among_prefetch_fill {:.6g}", label, ratio_or_zero(stats.pf_pollution_evict, stats.pf_fill)));
-  lines.push_back(fmt::format("{}_prefetch_accuracy {:.6g}", label, ratio_or_zero(stats.pf_useful, stats.pf_issued)));
+  lines.push_back(fmt::format("{}_prefetch_pollution_among_prefetch_fill {:.6g}", label, ratio_or_zero(pf_pollution_evict, pf_fill)));
+  lines.push_back(fmt::format("{}_prefetch_accuracy {:.6g}", label, ratio_or_zero(pf_useful, pf_issued)));
   if (stats.name.size() >= 4 && stats.name.compare(stats.name.size() - 4, 4, "_L1D") == 0)
     lines.push_back(fmt::format("{}_prefetch_accuracy_berti_artifact {:.6g}", label,
                                 ratio_or_zero(stats.pf_useful, stats.pf_useful + stats.pf_useless)));
-  lines.push_back(fmt::format("{}_prefetch_coverage {:.6g}", label, ratio_or_zero(stats.pf_useful, stats.pf_useful + demand_miss)));
+  const auto coverage_demand_miss = is_stlb_stats ? demand_origin_count(stats.stlb_origin_misses, cpu) : demand_miss;
+  lines.push_back(fmt::format("{}_prefetch_coverage {:.6g}", label, ratio_or_zero(pf_useful, pf_useful + coverage_demand_miss)));
+
+  if (is_stlb_stats && stats.stlb_prefetch_requested > 0) {
+    const auto dropped = pf_requested >= pf_issued ? pf_requested - pf_issued : 0;
+    const auto timely = pf_useful >= pf_late ? pf_useful - pf_late : 0;
+    lines.push_back(fmt::format("{}_pq_drop_rate {:.6g}", label, ratio_or_zero(dropped, pf_requested)));
+    lines.push_back(fmt::format("{}_prefetch_lookups {}", label, stats.stlb_prefetch_lookups));
+    lines.push_back(fmt::format("{}_prefetch_mshr_merge {}", label, stats.stlb_prefetch_mshr_merge));
+    lines.push_back(fmt::format("{}_prefetch_mpki {:.6g}", label, ratio_or_zero(stats.stlb_prefetch_lookups * 1000.0, instrs)));
+    lines.push_back(fmt::format("{}_timely_coverage {:.6g}", label, ratio_or_zero(timely, pf_useful + coverage_demand_miss)));
+    lines.push_back(fmt::format("{}_timely_accuracy {:.6g}", label, ratio_or_zero(timely, pf_issued)));
+    lines.push_back(fmt::format("{}_fill_accuracy {:.6g}", label, ratio_or_zero(timely + pf_late, pf_fill)));
+  }
 
   return lines;
 }
@@ -537,6 +568,24 @@ void append_stlb_cp_pb_metrics(std::vector<std::string>& lines, std::string_view
   lines.push_back(fmt::format("{}_CP_PB_demand_hit_mpki {:.6g}", label, ratio_or_zero(stats.stlb_cp_pb_demand_hit * 1000.0, instrs)));
 }
 
+void append_stlb_prefetch_buffer_metrics(std::vector<std::string>& lines, std::string_view label, const CACHE::stats_type& stats)
+{
+  const auto activity = stats.stlb_prefetch_buffer_insert + stats.stlb_prefetch_buffer_eviction + stats.stlb_prefetch_buffer_lookup
+      + stats.stlb_prefetch_buffer_hit + stats.stlb_prefetch_buffer_miss;
+  if (activity == 0)
+    return;
+
+  lines.emplace_back("");
+  lines.emplace_back("========= STLB-local Prefetch Buffer Stats =========");
+  lines.push_back(fmt::format("{}_STLB_prefetch_buffer_insert {}", label, stats.stlb_prefetch_buffer_insert));
+  lines.push_back(fmt::format("{}_STLB_prefetch_buffer_eviction {}", label, stats.stlb_prefetch_buffer_eviction));
+  lines.push_back(fmt::format("{}_STLB_prefetch_buffer_lookup {}", label, stats.stlb_prefetch_buffer_lookup));
+  lines.push_back(fmt::format("{}_STLB_prefetch_buffer_hit {}", label, stats.stlb_prefetch_buffer_hit));
+  lines.push_back(fmt::format("{}_STLB_prefetch_buffer_miss {}", label, stats.stlb_prefetch_buffer_miss));
+  lines.push_back(fmt::format("{}_STLB_prefetch_buffer_hit_rate {:.6g}", label,
+                              ratio_or_zero(stats.stlb_prefetch_buffer_hit, stats.stlb_prefetch_buffer_lookup)));
+}
+
 std::vector<std::string> format_vberti_tlb_cross_page_flow_stats(const std::map<std::string, CACHE::stats_type>& cache_stats_by_name,
                                                                  const std::vector<O3_CPU::stats_type>& cpu_stats)
 {
@@ -614,6 +663,7 @@ std::vector<std::string> format_vberti_tlb_cross_page_flow_stats(const std::map<
                                      stlb->second.tlb_cross_prefetch_too_early, stlb->second.tlb_cross_prefetch_pollution_evict,
                                      stlb->second.tlb_cross_prefetch_pollution_demand);
     append_stlb_cp_pb_metrics(lines, fmt::format("Core_{}", cpu_idx), stlb->second, instrs);
+    append_stlb_prefetch_buffer_metrics(lines, fmt::format("Core_{}", cpu_idx), stlb->second);
 
     const auto system_issued = dtlb->second.tlb_system_cross_prefetch_issued + stlb->second.tlb_system_cross_prefetch_issued;
     const auto system_useful = dtlb->second.tlb_system_cross_prefetch_useful + stlb->second.tlb_system_cross_prefetch_useful;

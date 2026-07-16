@@ -5,11 +5,11 @@ import tempfile
 from pathlib import Path
 
 from prepare_tlb_pattern_streams import (COMPACT_DROP_FIELDS, derive_streams, write_compact_copy,
-                                         write_global_seq_ordered_copy)
+                                         write_event_type_filtered_copy, write_global_seq_ordered_copy)
 
 
 FIELDS = [
-    "cpu", "global_seq", "load_tlb_seq", "vberti_prefetch_seq", "instr_id", "operand_index", "pc",
+    "cpu", "global_seq", "event_type", "load_tlb_seq", "vberti_prefetch_seq", "instr_id", "operand_index", "pc",
     "prefetch_issue_cycle", "prefetch_trigger_instr_id", "prefetch_trigger_pc", "prefetch_trigger_va",
     "dtlb_lookup_cycle", "translation_complete_cycle", "va", "vpn",
     "virtual_region_2m", "page_offset_in_region", "l1dtlb_result", "l1dtlb_merged", "stlb_accessed", "stlb_result", "stlb_merged",
@@ -21,6 +21,7 @@ def row(seq: int, accessed: int, result: str, merged: int = 0) -> dict[str, obje
     return {
         "cpu": 0,
         "global_seq": seq,
+        "event_type": "DATA_DEMAND",
         "load_tlb_seq": seq,
         "vberti_prefetch_seq": 1000 + seq,
         "instr_id": 100 + seq,
@@ -66,10 +67,14 @@ def main() -> None:
         access_compact = root / "access_compact.csv"
         miss = root / "miss.csv"
         miss_compact = root / "miss_compact.csv"
+        vberti_only = root / "vberti_only.csv"
+        rows = [row(2, 1, "MISS", 1), row(0, 0, "NOT_ACCESSED"), row(3, 1, "MISS"), row(1, 1, "HIT")]
+        rows[0]["event_type"] = "VBERTI_CP_PREFETCH"
+        rows[1]["event_type"] = "VBERTI_CP_PREFETCH"
         with source.open("w", encoding="utf-8", newline="") as file:
             writer = csv.DictWriter(file, fieldnames=FIELDS)
             writer.writeheader()
-            writer.writerows([row(2, 1, "MISS", 1), row(0, 0, "NOT_ACCESSED"), row(3, 1, "MISS"), row(1, 1, "HIT")])
+            writer.writerows(rows)
 
         assert write_global_seq_ordered_copy(source, ordered, chunk_size=2, compact_output_csv=ordered_compact) == 4
         source_rows = read_rows(source)
@@ -79,6 +84,9 @@ def main() -> None:
         assert write_compact_copy(ordered, copied_compact) == 4
         assert read_rows(ordered_compact) == read_rows(copied_compact)
         assert not (COMPACT_DROP_FIELDS & set(read_rows(ordered_compact)[0]))
+        assert write_event_type_filtered_copy(ordered, vberti_only, "VBERTI_CP_PREFETCH") == 2
+        assert [item["global_seq"] for item in read_rows(vberti_only)] == ["0", "2"]
+        assert all(item["event_type"] == "VBERTI_CP_PREFETCH" for item in read_rows(vberti_only))
         counts = derive_streams(ordered, access, miss, access_compact, miss_compact)
         access_rows = read_rows(access)
         miss_rows = read_rows(miss)

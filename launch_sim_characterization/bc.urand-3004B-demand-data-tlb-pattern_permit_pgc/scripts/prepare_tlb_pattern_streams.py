@@ -94,6 +94,33 @@ def write_compact_copy(input_csv: Path, output_csv: Path) -> int:
     return row_count
 
 
+def write_event_type_filtered_copy(input_csv: Path, output_csv: Path, event_type: str) -> int:
+    """Write an atomic, order-preserving copy containing one event type."""
+    if input_csv.resolve() == output_csv.resolve():
+        raise ValueError("The event-type filtered output must not overwrite its input CSV")
+    output_tmp, output_file = temporary_csv(output_csv)
+    row_count = 0
+    try:
+        with input_csv.open(encoding="utf-8", newline="") as input_file, output_file:
+            reader = csv.DictReader(input_file)
+            if reader.fieldnames is None:
+                raise ValueError(f"Missing CSV header: {input_csv}")
+            if "event_type" not in reader.fieldnames:
+                raise ValueError(f"Cannot filter by event type; missing event_type in {input_csv}")
+            writer = csv.DictWriter(output_file, fieldnames=reader.fieldnames)
+            writer.writeheader()
+            for row in reader:
+                if row["event_type"] != event_type:
+                    continue
+                writer.writerow(row)
+                row_count += 1
+        os.replace(output_tmp, output_csv)
+    except Exception:
+        output_tmp.unlink(missing_ok=True)
+        raise
+    return row_count
+
+
 def write_sorted_chunk(rows: list[dict[str, str]], fieldnames: list[str], directory: Path, sequence_column: str) -> Path:
     rows.sort(key=lambda row: (int(row["cpu"]), int(row[sequence_column])))
     fd, name = tempfile.mkstemp(prefix=".stlb-order.", suffix=".csv", dir=directory, text=True)
@@ -310,7 +337,25 @@ def main() -> None:
     parser.add_argument("--compact-copy-input", type=Path,
                         help="Only write an order-preserving compact copy of this existing CSV")
     parser.add_argument("--compact-copy-output", type=Path)
+    parser.add_argument(
+        "--event-type-filter",
+        action="append",
+        nargs=2,
+        type=Path,
+        metavar=("INPUT_CSV", "OUTPUT_CSV"),
+        help="Write an order-preserving filtered copy; may be supplied more than once",
+    )
+    parser.add_argument("--filter-event-type", default="VBERTI_CP_PREFETCH")
     args = parser.parse_args()
+
+    if args.event_type_filter:
+        for filter_input, filter_output in args.event_type_filter:
+            count = write_event_type_filtered_copy(filter_input, filter_output, args.filter_event_type)
+            print(
+                f"[PASS] Wrote {args.filter_event_type}-only stream: "
+                f"{filter_output} ({count:,} events)"
+            )
+        return
 
     if args.compact_copy_input is not None or args.compact_copy_output is not None:
         if args.compact_copy_input is None or args.compact_copy_output is None:

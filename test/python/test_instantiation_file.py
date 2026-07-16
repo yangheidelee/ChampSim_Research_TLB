@@ -121,6 +121,13 @@ class CacheBuilderTests(unittest.TestCase):
         modified = list(config.instantiation_file.get_cache_builder({**base_cache, **kwargs}, upper_levels))
         self.assertEqual({l.strip() for l in itertools.chain(empty, added_lines)}, {l.strip() for l in modified}) # Ignore whitespace
 
+    def get_stlb_element_diff(self, added_lines, **kwargs):
+        base_cache = { 'name': 'test_STLB', 'frequency': 250 }
+        upper_levels = [(None, 'test_STLB'), ('test_STLB', None)]
+        empty = list(config.instantiation_file.get_cache_builder(base_cache, upper_levels))
+        modified = list(config.instantiation_file.get_cache_builder({**base_cache, **kwargs}, upper_levels))
+        self.assertEqual({l.strip() for l in itertools.chain(empty, added_lines)}, {l.strip() for l in modified})
+
     def test_size(self):
         self.get_element_diff(['.size(champsim::data::bytes{1})'], size=1)
 
@@ -141,6 +148,24 @@ class CacheBuilderTests(unittest.TestCase):
 
     def test_pq_size(self):
         self.get_element_diff(['.pq_size(1)'], pq_size=1)
+
+    def test_stlb_prefetch_buffer_size(self):
+        self.get_stlb_element_diff(['.stlb_prefetch_buffer_size(64)'], stlb_prefetch_buffer_size=64)
+
+    def test_stlb_prefetch_buffer_latency(self):
+        self.get_stlb_element_diff(['.stlb_prefetch_buffer_latency(2)'], stlb_prefetch_buffer_latency=2)
+
+    def test_stlb_prefetch_destination_buffer(self):
+        self.get_stlb_element_diff(['.set_stlb_prefetch_destination_buffer()', '.stlb_prefetch_buffer_size(64)'],
+                                   stlb_prefetch_destination='PB', stlb_prefetch_buffer_size=64)
+
+    def test_stlb_prefetch_destination_rejects_zero_sized_buffer(self):
+        with self.assertRaises(ValueError):
+            list(config.instantiation_file.get_cache_builder({'name': 'test_STLB', 'stlb_prefetch_destination': 'PB'}, [(None, 'test_STLB')]))
+
+    def test_stlb_prefetch_buffer_rejected_on_data_cache(self):
+        with self.assertRaises(ValueError):
+            list(config.instantiation_file.get_cache_builder({'name': 'test_L1D', 'stlb_prefetch_buffer_size': 64}, [(None, 'test_L1D')]))
 
     def test_mshr_size(self):
         self.get_element_diff(['.mshr_size(1)'], mshr_size=1)
@@ -217,6 +242,16 @@ class PageTableWalkerBuilderTests(unittest.TestCase):
 
     def test_pscl2(self):
         self.get_element_diff(['.add_pscl(2, 1, 2)'], pscl2_set=1, pscl2_way=2)
+
+class PageTableWalkerQueueDefaultsTests(unittest.TestCase):
+
+    def test_pq_size_defaults_to_zero(self):
+        queues = config.instantiation_file.ptw_queue_defaults({'_queue_factor': 32})
+        self.assertEqual(queues['pq_size'], 0)
+
+    def test_explicit_pq_size_is_preserved(self):
+        queues = config.instantiation_file.ptw_queue_defaults({'_queue_factor': 32, 'pq_size': 16})
+        self.assertEqual(queues['pq_size'], 16)
 
 class GetUpperLevelsTests(unittest.TestCase):
 

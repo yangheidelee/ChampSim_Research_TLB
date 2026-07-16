@@ -41,9 +41,11 @@ enum class translation_origin : unsigned {
   L1D_PREFETCH_CROSS_PAGE,
   L1I_PREFETCH,
   OTHER,
+  STLB_PREFETCH,
   NUM_TYPES,
 };
 
 inline constexpr std::array<std::string_view, static_cast<std::size_t>(translation_origin::NUM_TYPES)> translation_origin_names{
-    "Demand_Data"sv, "Demand_Instruction"sv, "L1D_Prefetch"sv, "L1D_Prefetch_Same_Page"sv, "L1D_Prefetch_Cross_Page"sv, "L1I_Prefetch"sv, "Other"sv};
+    "Demand_Data"sv, "Demand_Instruction"sv, "L1D_Prefetch"sv, "L1D_Prefetch_Same_Page"sv, "L1D_Prefetch_Cross_Page"sv, "L1I_Prefetch"sv, "Other"sv,
+    "STLB_Prefetch"sv};
 #endif

@@ -12,6 +12,7 @@ override MODULE_ROOT += $(ROOT_DIR)
 override BRANCH_ROOT += $(addsuffix /branch,$(MODULE_ROOT))
 override BTB_ROOT += $(addsuffix /btb,$(MODULE_ROOT))
 override PREFETCH_ROOT += $(addsuffix /prefetcher,$(MODULE_ROOT))
+override PREFETCH_ROOT += $(ROOT_DIR)/prefetcher_stlb
 override REPLACEMENT_ROOT += $(addsuffix /replacement,$(MODULE_ROOT))
 
 # vcpkg integration

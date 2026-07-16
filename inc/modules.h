@@ -17,6 +17,7 @@
 #ifndef MODULES_H
 #define MODULES_H
 
+#include <array>
 #include <cstdint>
 #include <type_traits>
 #include <utility>
@@ -151,6 +152,87 @@ struct prefetcher : public bound_to<CACHE> {
 
   template <typename T, typename... Args>
   constexpr static bool has_branch_operate = decltype(branch_operate_member_impl<T, Args...>(0))::value;
+};
+
+struct stlb_prefetcher_context {
+  champsim::address v_address{};
+  champsim::address ip{};
+  uint64_t vpn = 0;
+  uint64_t instr_id = 0;
+  uint32_t cpu = 0;
+  std::array<uint8_t, 2> asid{};
+  access_type type = access_type::LOAD;
+  translation_origin origin = translation_origin::OTHER;
+  bool hit = false;
+  bool useful_prefetch = false;
+  bool prefetch_buffer_hit = false;
+  bool warmup = false;
+  uint32_t metadata = 0;
+};
+
+struct stlb_prefetcher_fill_context {
+  champsim::address v_address{};
+  champsim::address evicted_v_address{};
+  uint64_t vpn = 0;
+  uint64_t evicted_vpn = 0;
+  uint64_t instr_id = 0;
+  uint32_t cpu = 0;
+  std::array<uint8_t, 2> asid{};
+  access_type type = access_type::LOAD;
+  translation_origin origin = translation_origin::OTHER;
+  long set = 0;
+  long way = 0;
+  bool prefetch = false;
+  bool warmup = false;
+  uint32_t metadata = 0;
+};
+
+// STLB translation prefetchers deliberately use a separate callback surface
+// from data-cache line prefetchers. They still share ChampSim's module loader
+// and cache builder, so existing JSON configuration remains compatible.
+struct stlb_prefetcher : public bound_to<CACHE> {
+  explicit stlb_prefetcher(CACHE* cache) : bound_to<CACHE>(cache) {}
+  bool prefetch_translation(champsim::address virtual_address, uint32_t prefetch_metadata = 0) const;
+
+  template <typename T, typename... Args>
+  static auto initialize_member_impl(int) -> decltype(std::declval<T>().stlb_prefetcher_initialize(std::declval<Args>()...), std::true_type{});
+  template <typename, typename...>
+  static auto initialize_member_impl(long) -> std::false_type;
+
+  template <typename T, typename... Args>
+  static auto operate_member_impl(int) -> decltype(std::declval<T>().stlb_prefetcher_operate(std::declval<Args>()...), std::true_type{});
+  template <typename, typename...>
+  static auto operate_member_impl(long) -> std::false_type;
+
+  template <typename T, typename... Args>
+  static auto fill_member_impl(int) -> decltype(std::declval<T>().stlb_prefetcher_fill(std::declval<Args>()...), std::true_type{});
+  template <typename, typename...>
+  static auto fill_member_impl(long) -> std::false_type;
+
+  template <typename T, typename... Args>
+  static auto cycle_operate_member_impl(int) -> decltype(std::declval<T>().stlb_prefetcher_cycle_operate(std::declval<Args>()...), std::true_type{});
+  template <typename, typename...>
+  static auto cycle_operate_member_impl(long) -> std::false_type;
+
+  template <typename T, typename... Args>
+  static auto final_stats_member_impl(int) -> decltype(std::declval<T>().stlb_prefetcher_final_stats(std::declval<Args>()...), std::true_type{});
+  template <typename, typename...>
+  static auto final_stats_member_impl(long) -> std::false_type;
+
+  template <typename T, typename... Args>
+  constexpr static bool has_initialize = decltype(initialize_member_impl<T, Args...>(0))::value;
+
+  template <typename T, typename... Args>
+  constexpr static bool has_operate = decltype(operate_member_impl<T, Args...>(0))::value;
+
+  template <typename T, typename... Args>
+  constexpr static bool has_fill = decltype(fill_member_impl<T, Args...>(0))::value;
+
+  template <typename T, typename... Args>
+  constexpr static bool has_cycle_operate = decltype(cycle_operate_member_impl<T, Args...>(0))::value;
+
+  template <typename T, typename... Args>
+  constexpr static bool has_final_stats = decltype(final_stats_member_impl<T, Args...>(0))::value;
 };
 
 struct replacement : public bound_to<CACHE> {

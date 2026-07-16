@@ -77,6 +77,8 @@ cache_builder_parts = {
     'latency': '.latency({latency})',
     'hit_latency': '.hit_latency({hit_latency})',
     'fill_latency': '.fill_latency({fill_latency})',
+    'stlb_prefetch_buffer_size': '.stlb_prefetch_buffer_size({stlb_prefetch_buffer_size})',
+    'stlb_prefetch_buffer_latency': '.stlb_prefetch_buffer_latency({stlb_prefetch_buffer_latency})',
     'max_tag_check': '.tag_bandwidth(champsim::bandwidth::maximum_type{{{max_tag_check}}})',
     'max_fill': '.fill_bandwidth(champsim::bandwidth::maximum_type{{{max_fill}}})',
     '_offset_bits': '.offset_bits(champsim::data::bits{{{_offset_bits}}})',
@@ -138,6 +140,21 @@ def get_cache_builder(elem, ul_pairs):
     '''
     Generate a champsim::cache_builder
     '''
+    stlb_prefetch_buffer_keys = {
+        'stlb_prefetch_destination',
+        'stlb_prefetch_buffer_size',
+        'stlb_prefetch_buffer_latency',
+    }
+    configured_buffer_keys = stlb_prefetch_buffer_keys.intersection(elem)
+    if configured_buffer_keys and not elem.get('name', '').endswith('_STLB'):
+        raise ValueError('STLB prefetch-buffer options may only be configured on an STLB')
+
+    destination = elem.get('stlb_prefetch_destination', 'STLB')
+    if destination not in ('STLB', 'PB'):
+        raise ValueError('stlb_prefetch_destination must be either "STLB" or "PB"')
+    if destination == 'PB' and int(elem.get('stlb_prefetch_buffer_size', 0)) <= 0:
+        raise ValueError('stlb_prefetch_buffer_size must be greater than zero when the destination is "PB"')
+
     required_parts = [
         '.name("{name}")',
         '.upper_levels({{{^upper_levels_string}}})',
@@ -149,7 +166,9 @@ def get_cache_builder(elem, ul_pairs):
         ('wq_check_full_addr', True): '.set_wq_checks_full_addr()',
         ('wq_check_full_addr', False): '.reset_wq_checks_full_addr()',
         ('virtual_prefetch', True): '.set_virtual_prefetch()',
-        ('virtual_prefetch', False): '.reset_virtual_prefetch()'
+        ('virtual_prefetch', False): '.reset_virtual_prefetch()',
+        ('stlb_prefetch_destination', 'PB'): '.set_stlb_prefetch_destination_buffer()',
+        ('stlb_prefetch_destination', 'STLB'): '.reset_stlb_prefetch_destination_buffer()'
     }
 
     uppers = (v for v in ul_pairs if v[0] == elem.get('name'))
@@ -259,7 +278,7 @@ def ptw_queue_defaults(ptw):
     return {
         'rq_size': ptw.get('rq_size', ptw['_queue_factor']),
         'wq_size': 0,
-        'pq_size': 0,
+        'pq_size': ptw.get('pq_size', 0),
         '_offset_bits': 'champsim::lg2(PAGE_SIZE)',
         '_queue_check_full_addr': False
     }

@@ -196,6 +196,20 @@ long PageTableWalker::operate()
     ul->RQ.erase(rq_begin, rq_end);
   }
 
+  // Demand walks have strict priority. Prefetch walks may consume only the
+  // MAX_READ bandwidth left after all RQs have been considered. A request
+  // that cannot start its first walk step remains in PQ and retries later.
+  for (auto* ul : upper_levels) {
+    auto [pq_begin, pq_end] = champsim::get_span_p(std::cbegin(ul->PQ), std::cend(ul->PQ), tag_bw, [&next_steps, ul, this](const auto& pkt) {
+      auto result = this->handle_read(pkt, ul);
+      if (result.has_value())
+        next_steps.emplace_back(*result);
+      return result.has_value();
+    });
+    tag_bw.consume(std::distance(pq_begin, pq_end));
+    ul->PQ.erase(pq_begin, pq_end);
+  }
+
   MSHR.insert(std::cend(MSHR), std::begin(next_steps), std::end(next_steps));
   progress += fill_bw.amount_consumed() + tag_bw.amount_consumed();
 

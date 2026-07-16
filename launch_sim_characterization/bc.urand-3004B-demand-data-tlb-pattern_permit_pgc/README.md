@@ -15,6 +15,9 @@
 - `result/dtlb_access/tlb_pattern_core_0_global_seq_ordered_compact.csv`：相同行、相同顺序的精简可读副本。
 - `result/stlb_access/`：从统一流筛选真正执行 STLB tag lookup 的事件。
 - `result/stlb_miss/`：从 STLB access 中筛选 lookup 结果为 miss 的事件。
+- `result/dtlb_access/vberti_cp_prefetch_dtlb_access_core_0.csv`：只保留 `VBERTI_CP_PREFETCH` 的 DTLB access 序列。
+- `result/stlb_access/vberti_cp_prefetch_stlb_access_core_0.csv`：只保留真正执行 STLB lookup 的 `VBERTI_CP_PREFETCH` 序列。
+- `result/stlb_miss/vberti_cp_prefetch_stlb_miss_core_0.csv`：只保留 STLB lookup miss 的 `VBERTI_CP_PREFETCH` 序列。
 - `result/demand_only_dtlb_access/`：原有 logger 的 demand-only 兼容副本，用于证明原统计未改变，不作为本目录主图输入。
 - `csv_figure/{dtlb_access,stlb_access,stlb_miss}/`：三条统一 VPN 流的整套图和 CSV。
 
@@ -26,6 +29,8 @@
 `physical_address_valid`；不改变事件集合、行顺序或其余字段。完整 CSV 继续保留，供审计和后处理使用。
 
 原生 `tlb_pattern_core_0.csv` 在事件完成时写行，因此物理行序可能是完成顺序；后处理不会覆盖它，而是原子生成 `_global_seq_ordered.csv`。两个文件的事件和字段完全相同，只有行顺序不同。
+
+三份 `vberti_cp_prefetch_*` 文件严格按 `event_type=VBERTI_CP_PREFETCH` 流式筛选，保留输入文件的完整字段、行顺序和原始 sequence 值，不重新编号。这样可以同时观察纯 prefetch 轨迹及其在统一 `global_seq` 时间线中的真实位置。
 
 ## 图表口径
 

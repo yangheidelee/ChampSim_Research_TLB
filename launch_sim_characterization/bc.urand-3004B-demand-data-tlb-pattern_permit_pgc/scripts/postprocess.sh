@@ -58,6 +58,19 @@ python3 "${SCRIPT_DIR}/prepare_tlb_pattern_streams.py" \
     --stlb-access-dir "$STLB_ACCESS_RESULT_DIR" \
     --stlb-miss-dir "$STLB_MISS_RESULT_DIR"
 
+# Preserve the complete schemas and original sequence columns while selecting
+# only actual vBerti cross-page prefetch requests from each unified stream.
+python3 "${SCRIPT_DIR}/prepare_tlb_pattern_streams.py" \
+    --event-type-filter \
+        "$ordered_input_csv" \
+        "$DTLB_RESULT_DIR/vberti_cp_prefetch_dtlb_access_core_0.csv" \
+    --event-type-filter \
+        "$STLB_ACCESS_RESULT_DIR/stlb_access_core_0.csv" \
+        "$STLB_ACCESS_RESULT_DIR/vberti_cp_prefetch_stlb_access_core_0.csv" \
+    --event-type-filter \
+        "$STLB_MISS_RESULT_DIR/stlb_miss_core_0.csv" \
+        "$STLB_MISS_RESULT_DIR/vberti_cp_prefetch_stlb_miss_core_0.csv"
+
 common_analysis_args=(
     --coarse-bin-size "${COARSE_BIN_SIZE:-50000}"
     --top-pcs "${TOP_PCS:-32}"
@@ -91,3 +104,4 @@ python3 "${SCRIPT_DIR}/analyze_demand_tlb_pattern.py" \
     --address-space virtual "${virtual_analysis_args[@]}"
 
 echo "[DONE] Unified demand + cross-page-vBerti VPN figures/tables: $OUTPUT_ROOT/{dtlb_access,stlb_access,stlb_miss}"
+echo "[DONE] vBerti-CP-only result streams: $DTLB_RESULT_DIR, $STLB_ACCESS_RESULT_DIR, $STLB_MISS_RESULT_DIR"

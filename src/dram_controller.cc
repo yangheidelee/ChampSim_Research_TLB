@@ -577,6 +577,7 @@ bool MEMORY_CONTROLLER::add_rq(const request_type& packet, champsim::channel* ul
       case translation_origin::L1I_PREFETCH:
         ++stats.rq_read_stlb_l1i_pref;
         break;
+      case translation_origin::STLB_PREFETCH:
       case translation_origin::OTHER:
       case translation_origin::NUM_TYPES:
         ++stats.rq_read_unclassified;

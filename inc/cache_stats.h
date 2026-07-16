@@ -22,6 +22,30 @@ struct cache_stats {
   uint64_t pf_pollution_evict = 0;
   uint64_t pf_pollution_demand = 0;
 
+  // STLB-local translation prefetcher statistics. These counters are
+  // intentionally independent of the generic data-cache and vBerti stats.
+  uint64_t stlb_prefetch_requested = 0;
+  uint64_t stlb_prefetch_issued = 0;
+  uint64_t stlb_prefetch_lookups = 0;
+  uint64_t stlb_prefetch_hit = 0;
+  uint64_t stlb_prefetch_miss = 0;
+  uint64_t stlb_prefetch_mshr_merge = 0;
+  uint64_t stlb_prefetch_fill = 0;
+  uint64_t stlb_prefetch_useful = 0;
+  uint64_t stlb_prefetch_useless = 0;
+  uint64_t stlb_prefetch_late = 0;
+  uint64_t stlb_prefetch_too_early = 0;
+  uint64_t stlb_prefetch_pollution_evict = 0;
+  uint64_t stlb_prefetch_pollution_demand = 0;
+
+  // Independent destination buffer for STLB-local translation prefetches.
+  // These counters stay zero when the destination is the default STLB path.
+  uint64_t stlb_prefetch_buffer_insert = 0;
+  uint64_t stlb_prefetch_buffer_eviction = 0;
+  uint64_t stlb_prefetch_buffer_lookup = 0;
+  uint64_t stlb_prefetch_buffer_hit = 0;
+  uint64_t stlb_prefetch_buffer_miss = 0;
+
   // vBerti L1D prefetch candidate flow. These counters are updated only when
   // the prefetcher attaches L1D_PREF_META_VALID to pf_metadata.
   uint64_t vberti_prefetch_requested = 0;

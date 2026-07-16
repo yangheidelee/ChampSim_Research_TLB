@@ -32,6 +32,7 @@
 #include <limits>   // for numeric_limits
 #include <map>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -103,6 +104,9 @@ class CACHE : public champsim::operable
     uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
     uint64_t tlb_ptw_prefetch_id = 0;
 
+    bool stlb_prefetch_tracked = false;
+    bool stlb_prefetch_used = false;
+
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
 
     champsim::chrono::clock::time_point event_cycle = champsim::chrono::clock::time_point::max();
@@ -142,6 +146,9 @@ public:
     uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
     uint64_t tlb_ptw_prefetch_id = 0;
 
+    bool stlb_prefetch_tracked = false;
+    bool stlb_prefetch_used = false;
+
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
 
     champsim::chrono::clock::time_point time_enqueued;
@@ -165,6 +172,11 @@ private:
     {
       return std::tie(cpu, vpn, asid0, asid1) < std::tie(other.cpu, other.vpn, other.asid0, other.asid1);
     }
+
+    bool operator==(const tlb_prefetch_key& other) const
+    {
+      return cpu == other.cpu && vpn == other.vpn && asid0 == other.asid0 && asid1 == other.asid1;
+    }
   };
 
   struct stlb_cp_pb_entry {
@@ -177,6 +189,23 @@ private:
     bool tlb_ptw_prefetch_tracked = false;
     uint32_t tlb_ptw_prefetch_cpu = std::numeric_limits<uint32_t>::max();
     uint64_t tlb_ptw_prefetch_id = 0;
+  };
+
+  struct stlb_prefetch_buffer_entry {
+    champsim::address address{};
+    champsim::address v_address{};
+    champsim::address data{};
+    uint32_t pf_metadata = 0;
+    uint32_t cpu = 0;
+    uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
+    uint64_t generation = 0;
+    bool stats_tracked = false;
+  };
+
+  struct stlb_prefetch_buffer_lookup {
+    tag_lookup_type packet;
+    std::optional<stlb_prefetch_buffer_entry> result{};
+    champsim::chrono::clock::time_point ready_at = champsim::chrono::clock::time_point::max();
   };
 
   struct prefetch_too_early_key {
@@ -197,6 +226,8 @@ private:
   bool handle_fill(const mshr_type& fill_mshr);
   bool handle_miss(const tag_lookup_type& handle_pkt);
   bool handle_write(const tag_lookup_type& handle_pkt);
+  void operate_stlb_prefetcher(const tag_lookup_type& handle_pkt, bool hit, bool useful_prefetch, bool prefetch_buffer_hit = false);
+  void fill_stlb_prefetcher(const mshr_type& fill_mshr, long set, long way, champsim::address evicted_v_address);
   void finish_packet(const response_type& packet);
   void finish_translation(const response_type& packet);
   void finish_pqfull_tlb_rescue_translation(const response_type& packet);
@@ -228,6 +259,12 @@ private:
   void remember_tlb_cross_prefetch_pollution_candidate(const champsim::cache_block& victim, uint32_t victim_cpu);
   std::pair<bool, bool> consume_tlb_cross_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt);
   void discard_tlb_cross_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt);
+  void remember_stlb_prefetch_too_early_candidate(const champsim::cache_block& victim, uint32_t victim_cpu);
+  bool consume_stlb_prefetch_too_early_candidate(const tag_lookup_type& handle_pkt);
+  void discard_stlb_prefetch_too_early_candidate(const tag_lookup_type& handle_pkt);
+  void remember_stlb_prefetch_pollution_candidate(const champsim::cache_block& victim, uint32_t victim_cpu);
+  std::pair<bool, bool> consume_stlb_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt);
+  void discard_stlb_prefetch_pollution_candidate(const tag_lookup_type& handle_pkt);
   void record_tlb_origin_hit(const tag_lookup_type& handle_pkt);
   void record_tlb_origin_miss(const tag_lookup_type& handle_pkt);
   bool record_tlb_cross_prefetch_fill(const mshr_type& fill_mshr);
@@ -242,6 +279,13 @@ private:
   void insert_stlb_cp_pb(const mshr_type& fill_mshr);
   bool try_stlb_cp_pb_demand_hit(const tag_lookup_type& handle_pkt);
   void fill_stlb_from_cp_pb(const tag_lookup_type& handle_pkt, const stlb_cp_pb_entry& entry);
+  [[nodiscard]] bool stlb_prefetch_buffer_enabled() const;
+  [[nodiscard]] bool should_redirect_stlb_prefetch_buffer_fill(const mshr_type& fill_mshr) const;
+  void insert_stlb_prefetch_buffer(const mshr_type& fill_mshr);
+  bool start_stlb_prefetch_buffer_lookup(const tag_lookup_type& handle_pkt);
+  long complete_stlb_prefetch_buffer_lookups();
+  void complete_stlb_prefetch_buffer_hit(const tag_lookup_type& handle_pkt, const stlb_prefetch_buffer_entry& entry);
+  void fill_stlb_from_prefetch_buffer(const tag_lookup_type& handle_pkt, const stlb_prefetch_buffer_entry& entry);
 
 public:
   using BLOCK = champsim::cache_block;
@@ -291,7 +335,16 @@ private:
   std::deque<std::tuple<tlb_prefetch_key, bool, uint64_t>> tlb_cross_prefetch_pollution_fifo{};
   std::map<tlb_prefetch_key, std::pair<uint64_t, bool>> tlb_cross_prefetch_pollution_shadow{};
   uint64_t tlb_cross_prefetch_pollution_next_id = 0;
+  std::deque<tlb_prefetch_key> stlb_prefetch_too_early_fifo{};
+  std::map<tlb_prefetch_key, uint64_t> stlb_prefetch_too_early_shadow{};
+  std::deque<std::tuple<tlb_prefetch_key, bool, uint64_t>> stlb_prefetch_pollution_fifo{};
+  std::map<tlb_prefetch_key, std::pair<uint64_t, bool>> stlb_prefetch_pollution_shadow{};
+  uint64_t stlb_prefetch_pollution_next_id = 0;
+  uint8_t current_prefetch_asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
   std::map<tlb_prefetch_key, stlb_cp_pb_entry> stlb_cp_pb{};
+  std::deque<stlb_prefetch_buffer_entry> stlb_prefetch_buffer{};
+  std::deque<stlb_prefetch_buffer_lookup> stlb_prefetch_buffer_lookups{};
+  uint64_t stlb_prefetch_buffer_next_generation = 0;
 
 public:
   std::vector<channel_type*> upper_levels;
@@ -310,6 +363,9 @@ public:
   bool prefetch_as_load;
   bool match_offset_bits;
   bool virtual_prefetch;
+  champsim::stlb_prefetch_destination STLB_PREFETCH_DESTINATION;
+  std::size_t STLB_PREFETCH_BUFFER_SIZE;
+  champsim::chrono::clock::duration STLB_PREFETCH_BUFFER_LATENCY;
   std::vector<access_type> pref_activate_mask;
 
   using stats_type = cache_stats;
@@ -356,6 +412,7 @@ public:
   long invalidate_entry(champsim::address inval_addr);
   void record_l1d_prefetch_candidate(uint32_t prefetch_metadata);
   bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata);
+  bool prefetch_translation(champsim::address virtual_address, uint32_t prefetch_metadata = 0);
   [[nodiscard]] std::vector<std::string> prefetcher_names() const;
   [[nodiscard]] std::vector<std::string> replacement_names() const;
 
@@ -378,6 +435,8 @@ public:
                                                    uint32_t metadata_in) = 0;
     virtual uint32_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
                                                 uint32_t metadata_in) = 0;
+    virtual void impl_stlb_prefetcher_operate(const champsim::modules::stlb_prefetcher_context& context) = 0;
+    virtual void impl_stlb_prefetcher_fill(const champsim::modules::stlb_prefetcher_fill_context& context) = 0;
     virtual void impl_prefetcher_cycle_operate() = 0;
     virtual void impl_prefetcher_final_stats() = 0;
     virtual void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) = 0;
@@ -414,6 +473,8 @@ public:
                                                          uint32_t metadata_in) final;
     [[nodiscard]] uint32_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
                                                       uint32_t metadata_in) final;
+    void impl_stlb_prefetcher_operate(const champsim::modules::stlb_prefetcher_context& context) final;
+    void impl_stlb_prefetcher_fill(const champsim::modules::stlb_prefetcher_fill_context& context) final;
     void impl_prefetcher_cycle_operate() final;
     void impl_prefetcher_final_stats() final;
     void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) final;
@@ -452,6 +513,8 @@ public:
                                                        uint32_t metadata_in) const;
   [[nodiscard]] uint32_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
                                                     uint32_t metadata_in) const;
+  void impl_stlb_prefetcher_operate(const champsim::modules::stlb_prefetcher_context& context) const;
+  void impl_stlb_prefetcher_fill(const champsim::modules::stlb_prefetcher_fill_context& context) const;
   void impl_prefetcher_cycle_operate() const;
   void impl_prefetcher_final_stats() const;
   void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) const;
@@ -471,9 +534,15 @@ public:
       : champsim::operable(b.m_clock_period), upper_levels(b.m_uls), lower_level(b.m_ll), lower_translate(b.m_lt), NAME(b.m_name), NUM_SET(b.get_num_sets()),
         NUM_WAY(b.get_num_ways()), MSHR_SIZE(b.get_num_mshrs()), PQ_SIZE(b.m_pq_size), HIT_LATENCY(b.get_hit_latency() * b.m_clock_period),
         FILL_LATENCY(b.get_fill_latency() * b.m_clock_period), OFFSET_BITS(b.m_offset_bits), MAX_TAG(b.get_tag_bandwidth()), MAX_FILL(b.get_fill_bandwidth()),
-        prefetch_as_load(b.m_pref_load), match_offset_bits(b.m_wq_full_addr), virtual_prefetch(b.m_va_pref), pref_activate_mask(b.m_pref_act_mask),
+        prefetch_as_load(b.m_pref_load), match_offset_bits(b.m_wq_full_addr), virtual_prefetch(b.m_va_pref),
+        STLB_PREFETCH_DESTINATION(b.m_stlb_prefetch_destination), STLB_PREFETCH_BUFFER_SIZE(b.m_stlb_prefetch_buffer_size),
+        STLB_PREFETCH_BUFFER_LATENCY(b.m_stlb_prefetch_buffer_latency * b.m_clock_period), pref_activate_mask(b.m_pref_act_mask),
         pref_module_pimpl(std::make_unique<prefetcher_module_model<Ps...>>(this)), repl_module_pimpl(std::make_unique<replacement_module_model<Rs...>>(this))
   {
+    if (STLB_PREFETCH_DESTINATION == champsim::stlb_prefetch_destination::PREFETCH_BUFFER && !is_stlb())
+      throw std::invalid_argument("The STLB prefetch buffer can only be configured on an STLB cache");
+    if (STLB_PREFETCH_DESTINATION == champsim::stlb_prefetch_destination::PREFETCH_BUFFER && STLB_PREFETCH_BUFFER_SIZE == 0)
+      throw std::invalid_argument("The STLB prefetch buffer must contain at least one entry");
   }
 
   CACHE(const CACHE&) = delete;
@@ -506,6 +575,8 @@ void CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_initialize()
     using namespace champsim::modules;
     if constexpr (prefetcher::has_initialize<decltype(p)>)
       p.prefetcher_initialize();
+    if constexpr (stlb_prefetcher::has_initialize<decltype(p)>)
+      p.stlb_prefetcher_initialize();
   };
 
   std::apply([&](auto&... p) { (..., process_one(p)); }, intern_);
@@ -554,12 +625,38 @@ uint32_t CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_cache_fill(champ
 }
 
 template <typename... Ps>
+void CACHE::prefetcher_module_model<Ps...>::impl_stlb_prefetcher_operate(const champsim::modules::stlb_prefetcher_context& context)
+{
+  [[maybe_unused]] auto process_one = [&](auto& p) {
+    using namespace champsim::modules;
+    if constexpr (stlb_prefetcher::has_operate<decltype(p), const stlb_prefetcher_context&>)
+      p.stlb_prefetcher_operate(context);
+  };
+
+  std::apply([&](auto&... p) { (..., process_one(p)); }, intern_);
+}
+
+template <typename... Ps>
+void CACHE::prefetcher_module_model<Ps...>::impl_stlb_prefetcher_fill(const champsim::modules::stlb_prefetcher_fill_context& context)
+{
+  [[maybe_unused]] auto process_one = [&](auto& p) {
+    using namespace champsim::modules;
+    if constexpr (stlb_prefetcher::has_fill<decltype(p), const stlb_prefetcher_fill_context&>)
+      p.stlb_prefetcher_fill(context);
+  };
+
+  std::apply([&](auto&... p) { (..., process_one(p)); }, intern_);
+}
+
+template <typename... Ps>
 void CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_cycle_operate()
 {
   [[maybe_unused]] auto process_one = [&](auto& p) {
     using namespace champsim::modules;
     if constexpr (prefetcher::has_cycle_operate<decltype(p)>)
       p.prefetcher_cycle_operate();
+    if constexpr (stlb_prefetcher::has_cycle_operate<decltype(p)>)
+      p.stlb_prefetcher_cycle_operate();
   };
 
   std::apply([&](auto&... p) { (..., process_one(p)); }, intern_);
@@ -572,6 +669,8 @@ void CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_final_stats()
     using namespace champsim::modules;
     if constexpr (prefetcher::has_final_stats<decltype(p)>)
       p.prefetcher_final_stats();
+    if constexpr (stlb_prefetcher::has_final_stats<decltype(p)>)
+      p.stlb_prefetcher_final_stats();
   };
 
   std::apply([&](auto&... p) { (..., process_one(p)); }, intern_);

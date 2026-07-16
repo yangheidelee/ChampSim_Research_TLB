@@ -54,6 +54,19 @@ void to_json(nlohmann::json& j, const CACHE::stats_type& stats)
   statsmap.emplace("too-early prefetch", stats.pf_too_early);
   statsmap.emplace("prefetch pollution evict", stats.pf_pollution_evict);
   statsmap.emplace("prefetch pollution demand", stats.pf_pollution_demand);
+  statsmap.emplace("STLB prefetch requested", stats.stlb_prefetch_requested);
+  statsmap.emplace("STLB prefetch issued", stats.stlb_prefetch_issued);
+  statsmap.emplace("STLB prefetch lookups", stats.stlb_prefetch_lookups);
+  statsmap.emplace("STLB prefetch hit", stats.stlb_prefetch_hit);
+  statsmap.emplace("STLB prefetch miss", stats.stlb_prefetch_miss);
+  statsmap.emplace("STLB prefetch MSHR merge", stats.stlb_prefetch_mshr_merge);
+  statsmap.emplace("STLB prefetch fill", stats.stlb_prefetch_fill);
+  statsmap.emplace("STLB prefetch useful", stats.stlb_prefetch_useful);
+  statsmap.emplace("STLB prefetch useless", stats.stlb_prefetch_useless);
+  statsmap.emplace("STLB prefetch late", stats.stlb_prefetch_late);
+  statsmap.emplace("STLB prefetch too early", stats.stlb_prefetch_too_early);
+  statsmap.emplace("STLB prefetch pollution evict", stats.stlb_prefetch_pollution_evict);
+  statsmap.emplace("STLB prefetch pollution demand", stats.stlb_prefetch_pollution_demand);
   statsmap.emplace("vBerti prefetch requested", stats.vberti_prefetch_requested);
   statsmap.emplace("vBerti cross-page requested", stats.vberti_cross_page_requested);
   statsmap.emplace("vBerti prefetch issued", stats.vberti_prefetch_issued);
@@ -84,6 +97,14 @@ void to_json(nlohmann::json& j, const CACHE::stats_type& stats)
   statsmap.emplace("STLB CP-PB insert", stats.stlb_cp_pb_insert);
   statsmap.emplace("STLB CP-PB demand hit", stats.stlb_cp_pb_demand_hit);
   statsmap.emplace("STLB CP-PB demand miss", stats.stlb_cp_pb_demand_miss);
+  if (stats.stlb_prefetch_buffer_insert > 0 || stats.stlb_prefetch_buffer_eviction > 0 || stats.stlb_prefetch_buffer_lookup > 0
+      || stats.stlb_prefetch_buffer_hit > 0 || stats.stlb_prefetch_buffer_miss > 0) {
+    statsmap.emplace("STLB prefetch buffer insert", stats.stlb_prefetch_buffer_insert);
+    statsmap.emplace("STLB prefetch buffer eviction", stats.stlb_prefetch_buffer_eviction);
+    statsmap.emplace("STLB prefetch buffer lookup", stats.stlb_prefetch_buffer_lookup);
+    statsmap.emplace("STLB prefetch buffer hit", stats.stlb_prefetch_buffer_hit);
+    statsmap.emplace("STLB prefetch buffer miss", stats.stlb_prefetch_buffer_miss);
+  }
 
   uint64_t total_downstream_demands = stats.mshr_return.total();
   for (std::size_t cpu = 0; cpu < NUM_CPUS; ++cpu)
